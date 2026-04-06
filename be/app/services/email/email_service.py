@@ -48,6 +48,30 @@ class EmailService:
         except Exception as exc:
             raise BadRequestException("Failed to send OTP email") from exc
 
+    async def send_reset_password_otp_email(self, to_email: str, otp: str) -> None:
+        message = EmailMessage()
+        message["Subject"] = "Your password reset OTP"
+        message["From"] = self.smtp_from
+        message["To"] = to_email
+        message.set_content(
+            (
+                "Your password reset OTP is: "
+                f"{otp}\n\n"
+                "This code expires in 5 minutes.\n"
+                "If you did not request this, please secure your account."
+            )
+        )
+
+        try:
+            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10) as smtp:
+                if self.use_tls:
+                    smtp.starttls()
+                if self.smtp_user and self.smtp_password:
+                    smtp.login(self.smtp_user, self.smtp_password)
+                smtp.send_message(message)
+        except Exception as exc:
+            raise BadRequestException("Failed to send reset OTP email") from exc
+
 
 
 def get_email_service() -> EmailService:

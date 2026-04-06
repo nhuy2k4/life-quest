@@ -102,6 +102,39 @@ class ResendOtpRequest(BaseModel):
     }
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: Annotated[str, Field(min_length=8, max_length=100)]
+    new_password: Annotated[str, Field(min_length=8, max_length=100)]
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_strength(cls, v: str) -> str:
+        if not any(c.isupper() for c in v):
+            raise ValueError("Mật khẩu mới phải có ít nhất 1 chữ hoa")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Mật khẩu mới phải có ít nhất 1 chữ số")
+        return v
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    otp: Annotated[str, Field(min_length=6, max_length=6)]
+    new_password: Annotated[str, Field(min_length=8, max_length=100)]
+
+    @field_validator("new_password")
+    @classmethod
+    def reset_password_strength(cls, v: str) -> str:
+        if not any(c.isupper() for c in v):
+            raise ValueError("Mật khẩu mới phải có ít nhất 1 chữ hoa")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Mật khẩu mới phải có ít nhất 1 chữ số")
+        return v
+
+
 # ── Response Schemas ──────────────────────────────────────────────────────────
 
 class TokenResponse(BaseModel):

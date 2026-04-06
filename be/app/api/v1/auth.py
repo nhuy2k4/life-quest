@@ -1,14 +1,18 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.deps.auth import CurrentUser, get_current_user
 from app.deps.db import get_db
 from app.repositories.auth_repository import AuthRepository
 from app.schemas.auth import (
     AuthMessageResponse,
+    ChangePasswordRequest,
+    ForgotPasswordRequest,
     GoogleLoginRequest,
     LoginRequest,
     LogoutRequest,
     RefreshRequest,
+    ResetPasswordRequest,
     ResendOtpRequest,
     RegisterRequest,
     TokenResponse,
@@ -102,6 +106,49 @@ async def resend_otp(
     service: AuthService = Depends(get_auth_service),
 ) -> AuthMessageResponse:
     return await service.resend_otp(request)
+
+
+@router.post(
+    "/change-password",
+    response_model=AuthMessageResponse,
+    summary="Đổi mật khẩu tài khoản local",
+    description="Yêu cầu đăng nhập, chỉ hỗ trợ user provider=local.",
+)
+async def change_password(
+    request: ChangePasswordRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: AuthService = Depends(get_auth_service),
+) -> AuthMessageResponse:
+    return await service.change_password_by_user_id(
+        user_id=current_user.id,
+        request=request,
+    )
+
+
+@router.post(
+    "/forgot-password",
+    response_model=AuthMessageResponse,
+    summary="Gửi OTP quên mật khẩu",
+    description="Tạo OTP reset password cho tài khoản local và gửi qua email.",
+)
+async def forgot_password(
+    request: ForgotPasswordRequest,
+    service: AuthService = Depends(get_auth_service),
+) -> AuthMessageResponse:
+    return await service.forgot_password(request)
+
+
+@router.post(
+    "/reset-password",
+    response_model=AuthMessageResponse,
+    summary="Đặt lại mật khẩu bằng OTP",
+    description="Xác thực OTP reset password rồi cập nhật mật khẩu mới cho tài khoản local.",
+)
+async def reset_password(
+    request: ResetPasswordRequest,
+    service: AuthService = Depends(get_auth_service),
+) -> AuthMessageResponse:
+    return await service.reset_password(request)
 
 
 # ── POST /auth/refresh ────────────────────────────────────────────────────────

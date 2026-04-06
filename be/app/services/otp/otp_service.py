@@ -27,6 +27,14 @@ class OTPService:
         return f"otp:verify_email:cooldown:{email.lower()}"
 
     @staticmethod
+    def _reset_password_key(email: str) -> str:
+        return f"otp:reset_password:{email.lower()}"
+
+    @staticmethod
+    def _reset_password_cooldown_key(email: str) -> str:
+        return f"otp:reset_password:cooldown:{email.lower()}"
+
+    @staticmethod
     def generate_otp() -> str:
         return f"{secrets.randbelow(1_000_000):06d}"
 
@@ -63,6 +71,35 @@ class OTPService:
     async def mark_resend_cooldown(self, email: str) -> None:
         cooldown_key = self._cooldown_key(email)
         await redis_set(cooldown_key, "1", ttl=self.resend_cooldown_seconds)
+
+    async def save_reset_password_otp(self, email: str, otp: str) -> None:
+        await redis_set(
+            self._reset_password_key(email),
+            self._hash_otp(otp),
+            ttl=self.otp_ttl_seconds,
+        )
+
+    async def verify_reset_password_otp(self, email: str, otp: str) -> None:
+        cached_hash = await redis_get(self._reset_password_key(email))
+        if cached_hash is None:
+            raise BadRequestException("OTP expired")
+
+        if not hmac.compare_digest(cached_hash, self._hash_otp(otp)):
+            raise BadRequestException("Invalid OTP")
+
+    async def delete_reset_password_otp(self, email: str) -> None:
+        await redis_delete(self._reset_password_key(email))
+
+    async def enforce_reset_password_cooldown(self, email: str) -> None:
+        if await redis_get(self._reset_password_cooldown_key(email)):
+            raise RateLimitException("Please wait before requesting another OTP")
+
+    async def mark_reset_password_cooldown(self, email: str) -> None:
+        await redis_set(
+            self._reset_password_cooldown_key(email),
+            "1",
+            ttl=self.resend_cooldown_seconds,
+        )
 
 
 

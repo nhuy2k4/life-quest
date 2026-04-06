@@ -24,8 +24,11 @@ from app.models.user import User
 from app.repositories.auth_repository import AuthRepository
 from app.schemas.auth import (
     AuthMessageResponse,
+    ChangePasswordRequest,
+    ForgotPasswordRequest,
     LoginRequest,
     RefreshRequest,
+    ResetPasswordRequest,
     ResendOtpRequest,
     RegisterRequest,
     TokenResponse,
@@ -246,18 +249,69 @@ class AuthService:
     async def change_password(
         self,
         user: User,
-        current_password: str,
-        new_password: str,
-    ) -> None:
+        request: ChangePasswordRequest,
+    ) -> AuthMessageResponse:
         """Đổi mật khẩu cho tài khoản local."""
         if user.provider != "local":
             raise ForbiddenException("Google account cannot change password here")
 
-        if user.password_hash is None or not verify_password(current_password, user.password_hash):
+        if user.password_hash is None or not verify_password(request.current_password, user.password_hash):
             raise CredentialsException("Mật khẩu hiện tại không đúng")
 
-        await self.repository.update_user_password(user, hash_password(new_password))
+        if request.current_password == request.new_password:
+            raise BadRequestException("Mật khẩu mới không được trùng mật khẩu cũ")
+
+        await self.repository.update_user_password(user, hash_password(request.new_password))
         await self.repository.commit()
+        return AuthMessageResponse(message="Password changed successfully")
+
+    async def change_password_by_user_id(
+        self,
+        user_id: UUID,
+        request: ChangePasswordRequest,
+    ) -> AuthMessageResponse:
+        user = await self.repository.get_user_by_id(user_id)
+        if user is None:
+            raise CredentialsException("User không tồn tại")
+        return await self.change_password(user=user, request=request)
+
+    async def forgot_password(self, request: ForgotPasswordRequest) -> AuthMessageResponse:
+        user = await self.repository.get_user_by_email(request.email)
+
+        # Không tiết lộ email có tồn tại hay không.
+        if user is None:
+            return AuthMessageResponse(
+                message="If this email exists, a reset OTP has been sent"
+            )
+
+        if user.provider != "local":
+            raise BadRequestException("Please login with Google")
+
+        await self.otp_service.enforce_reset_password_cooldown(request.email)
+
+        otp = self.otp_service.generate_otp()
+        await self.otp_service.save_reset_password_otp(request.email, otp)
+        await self.email_service.send_reset_password_otp_email(request.email, otp)
+        await self.otp_service.mark_reset_password_cooldown(request.email)
+
+        return AuthMessageResponse(
+            message="If this email exists, a reset OTP has been sent"
+        )
+
+    async def reset_password(self, request: ResetPasswordRequest) -> AuthMessageResponse:
+        user = await self.repository.get_user_by_email(request.email)
+        if user is None:
+            raise BadRequestException("Email does not exist")
+
+        if user.provider != "local":
+            raise BadRequestException("Please login with Google")
+
+        await self.otp_service.verify_reset_password_otp(request.email, request.otp)
+        await self.repository.update_user_password(user, hash_password(request.new_password))
+        await self.otp_service.delete_reset_password_otp(request.email)
+        await self.repository.commit()
+
+        return AuthMessageResponse(message="Password reset successfully")
 
     async def verify_email(self, request: VerifyEmailRequest) -> AuthMessageResponse:
         user = await self.repository.get_user_by_email(request.email)
