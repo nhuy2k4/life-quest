@@ -1,8 +1,13 @@
+import uuid
+
 from fastapi import APIRouter, Depends, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import NotFoundException
 from app.deps.auth import CurrentUser, get_current_user
 from app.deps.db import get_db
+from app.models.user import User
 from app.repositories.auth_repository import AuthRepository
 from app.schemas.auth import (
     AuthMessageResponse,
@@ -182,3 +187,19 @@ async def logout(
     service: AuthService = Depends(get_auth_service),
 ) -> None:
     await service.logout(refresh_token_raw=body.refresh_token)
+
+
+@router.get(
+    "/me",
+    response_model=UserMeResponse,
+    summary="Lấy thông tin tài khoản hiện tại",
+    description="Yêu cầu access token hợp lệ. Trả về profile user đang đăng nhập.",
+)
+async def get_my_profile(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UserMeResponse:
+    user = await db.scalar(select(User).where(User.id == uuid.UUID(str(current_user.id))))
+    if user is None:
+        raise NotFoundException("User không tồn tại")
+    return user
