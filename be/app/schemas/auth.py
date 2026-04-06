@@ -76,6 +76,32 @@ class GoogleLoginRequest(BaseModel):
     }
 
 
+class VerifyEmailRequest(BaseModel):
+    email: EmailStr
+    otp: Annotated[str, Field(min_length=6, max_length=6)]
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "email": "john@example.com",
+                "otp": "123456",
+            }
+        }
+    }
+
+
+class ResendOtpRequest(BaseModel):
+    email: EmailStr
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "email": "john@example.com",
+            }
+        }
+    }
+
+
 # ── Response Schemas ──────────────────────────────────────────────────────────
 
 class TokenResponse(BaseModel):
@@ -100,3 +126,7 @@ class TokenResponse(BaseModel):
             }
         }
     }
+
+
+class AuthMessageResponse(BaseModel):
+    message: str

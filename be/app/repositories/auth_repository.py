@@ -32,6 +32,7 @@ class AuthRepository:
         password_hash: str | None,
         provider: str = "local",
         provider_id: str | None = None,
+        is_verified: bool = False,
         level_id: int = 1,
     ) -> User:
         user = User(
@@ -40,6 +41,7 @@ class AuthRepository:
             password_hash=password_hash,
             provider=provider,
             provider_id=provider_id,
+            is_verified=is_verified,
             level_id=level_id,
         )
         self.db.add(user)
@@ -48,6 +50,10 @@ class AuthRepository:
 
     async def update_user_password(self, user: User, password_hash: str) -> None:
         user.password_hash = password_hash
+        await self.db.flush()
+
+    async def set_user_verified(self, user: User, is_verified: bool = True) -> None:
+        user.is_verified = is_verified
         await self.db.flush()
 
     async def create_user_preference(self, user_id: UUID) -> UserPreference:

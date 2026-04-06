@@ -7,6 +7,7 @@ from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 
 from app.core.exceptions import (
+    BadRequestException,
     ConflictException,
     CredentialsException,
     ForbiddenException,
@@ -22,19 +23,31 @@ from app.core.config import settings
 from app.models.user import User
 from app.repositories.auth_repository import AuthRepository
 from app.schemas.auth import (
+    AuthMessageResponse,
     LoginRequest,
     RefreshRequest,
+    ResendOtpRequest,
     RegisterRequest,
     TokenResponse,
+    VerifyEmailRequest,
 )
 from app.schemas.user import UserMeResponse
+from app.services.email.email_service import EmailService, get_email_service
+from app.services.otp.otp_service import OTPService, get_otp_service
 
 
 class AuthService:
     """Business logic cho authentication & authorization."""
 
-    def __init__(self, repository: AuthRepository) -> None:
+    def __init__(
+        self,
+        repository: AuthRepository,
+        otp_service: OTPService | None = None,
+        email_service: EmailService | None = None,
+    ) -> None:
         self.repository = repository
+        self.otp_service = otp_service or get_otp_service()
+        self.email_service = email_service or get_email_service()
 
     # ── Register ──────────────────────────────────────────────────────────────
 
@@ -67,15 +80,17 @@ class AuthService:
             password_hash=hash_password(request.password),
             provider="local",
             provider_id=None,
+            is_verified=False,
             level_id=1,                          # default level Beginner
         )
 
         # Tạo UserPreference rỗng — sẽ điền khi onboarding
         await self.repository.create_user_preference(user.id)
 
+        await self._generate_and_send_email_otp(request.email)
+
         await self.repository.commit()
         await self.repository.refresh_user(user)
-
         return UserMeResponse.model_validate(user)
 
     # ── Login ─────────────────────────────────────────────────────────────────
@@ -103,6 +118,9 @@ class AuthService:
 
         if user.is_banned:
             raise ForbiddenException("Tài khoản đã bị khóa. Liên hệ support để được hỗ trợ.")
+
+        if not user.is_verified:
+            raise ForbiddenException("Please verify your email first")
 
         token_response = await self._issue_tokens(user)
         await self.repository.commit()
@@ -138,6 +156,7 @@ class AuthService:
                 password_hash=None,
                 provider="google",
                 provider_id=provider_id,
+                is_verified=True,
                 level_id=1,
             )
             await self.repository.create_user_preference(user.id)
@@ -240,6 +259,35 @@ class AuthService:
         await self.repository.update_user_password(user, hash_password(new_password))
         await self.repository.commit()
 
+    async def verify_email(self, request: VerifyEmailRequest) -> AuthMessageResponse:
+        user = await self.repository.get_user_by_email(request.email)
+        if user is None:
+            raise BadRequestException("Email does not exist")
+
+        if user.is_verified:
+            return AuthMessageResponse(message="Email already verified")
+
+        await self.otp_service.verify_otp(request.email, request.otp)
+        await self.repository.set_user_verified(user, True)
+        await self.otp_service.delete_otp(request.email)
+        await self.repository.commit()
+
+        return AuthMessageResponse(message="Email verified successfully")
+
+    async def resend_otp(self, request: ResendOtpRequest) -> AuthMessageResponse:
+        user = await self.repository.get_user_by_email(request.email)
+        if user is None:
+            raise BadRequestException("Email does not exist")
+
+        if user.is_verified:
+            return AuthMessageResponse(message="Email already verified")
+
+        await self.otp_service.enforce_resend_cooldown(request.email)
+        await self._generate_and_send_email_otp(request.email)
+        await self.otp_service.mark_resend_cooldown(request.email)
+
+        return AuthMessageResponse(message="OTP has been resent")
+
     # ── Private Helpers ───────────────────────────────────────────────────────
 
     async def _issue_tokens(self, user: User) -> TokenResponse:
@@ -274,3 +322,8 @@ class AuthService:
     async def _revoke_all_user_refresh_tokens(self, user_id: UUID) -> None:
         """Emergency revoke tất cả refresh token của user khi phát hiện reuse attack."""
         await self.repository.revoke_all_user_tokens(user_id)
+
+    async def _generate_and_send_email_otp(self, email: str) -> None:
+        otp = self.otp_service.generate_otp()
+        await self.otp_service.save_otp_to_redis(email, otp)
+        await self.email_service.send_otp_email(email, otp)

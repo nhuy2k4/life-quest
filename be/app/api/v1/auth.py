@@ -4,17 +4,31 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.deps.db import get_db
 from app.repositories.auth_repository import AuthRepository
 from app.schemas.auth import (
+    AuthMessageResponse,
     GoogleLoginRequest,
     LoginRequest,
     LogoutRequest,
     RefreshRequest,
+    ResendOtpRequest,
     RegisterRequest,
     TokenResponse,
+    VerifyEmailRequest,
 )
 from app.schemas.user import UserMeResponse
 from app.services.auth.auth_service import AuthService
+from app.services.email.email_service import EmailService, get_email_service
+from app.services.otp.otp_service import OTPService, get_otp_service
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+
+
+def get_auth_service(
+    db: AsyncSession = Depends(get_db),
+    otp_service: OTPService = Depends(get_otp_service),
+    email_service: EmailService = Depends(get_email_service),
+) -> AuthService:
+    repository = AuthRepository(db)
+    return AuthService(repository, otp_service=otp_service, email_service=email_service)
 
 
 # ── POST /auth/register ───────────────────────────────────────────────────────
@@ -28,9 +42,8 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 )
 async def register(
     request: RegisterRequest,
-    db: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
 ) -> UserMeResponse:
-    service = AuthService(AuthRepository(db))
     return await service.register(request)
 
 
@@ -47,9 +60,8 @@ async def register(
 )
 async def login(
     request: LoginRequest,
-    db: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
 ) -> TokenResponse:
-    service = AuthService(AuthRepository(db))
     return await service.login(request)
 
 
@@ -61,10 +73,35 @@ async def login(
 )
 async def login_with_google(
     request: GoogleLoginRequest,
-    db: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
 ) -> TokenResponse:
-    service = AuthService(AuthRepository(db))
     return await service.login_with_google(request.id_token)
+
+
+@router.post(
+    "/verify-email",
+    response_model=AuthMessageResponse,
+    summary="Xác thực email bằng OTP",
+    description="Xác thực OTP gửi đến email, cập nhật user.is_verified=true khi hợp lệ.",
+)
+async def verify_email(
+    request: VerifyEmailRequest,
+    service: AuthService = Depends(get_auth_service),
+) -> AuthMessageResponse:
+    return await service.verify_email(request)
+
+
+@router.post(
+    "/resend-otp",
+    response_model=AuthMessageResponse,
+    summary="Gửi lại OTP xác thực email",
+    description="Tạo OTP mới, lưu đè OTP cũ trong Redis và gửi lại qua email.",
+)
+async def resend_otp(
+    request: ResendOtpRequest,
+    service: AuthService = Depends(get_auth_service),
+) -> AuthMessageResponse:
+    return await service.resend_otp(request)
 
 
 # ── POST /auth/refresh ────────────────────────────────────────────────────────
@@ -80,9 +117,8 @@ async def login_with_google(
 )
 async def refresh_token(
     request: RefreshRequest,
-    db: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
 ) -> TokenResponse:
-    service = AuthService(AuthRepository(db))
     return await service.refresh(request)
 
 
@@ -96,7 +132,6 @@ async def refresh_token(
 )
 async def logout(
     body: LogoutRequest,
-    db: AsyncSession = Depends(get_db),
+    service: AuthService = Depends(get_auth_service),
 ) -> None:
-    service = AuthService(AuthRepository(db))
     await service.logout(refresh_token_raw=body.refresh_token)

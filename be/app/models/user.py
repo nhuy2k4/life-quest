@@ -55,6 +55,7 @@ class User(Base, UUIDMixin, TimestampMixin):
         nullable=False,
         default="user",
     )
+    is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_banned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     onboarding_completed: Mapped[bool] = mapped_column(
         Boolean,
