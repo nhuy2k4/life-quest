@@ -1,0 +1,46 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+.env/
+.venv/
+
+# Environment variables (CỰC KỲ QUAN TRỌNG)
+.env
+
+# Logs
+*.log
+
+# Database
+*.sqlite3
+
+# VSCode
+.vscode/
+
+# PyCharm
+.idea/
+
+# MacOS
+.DS_Store
+
+# Node (nếu có frontend)
+node_modules/
+dist/
+build/
+
+# Testing
+.coverage
+htmlcov/
+
+# Migrations (nếu muốn giữ thì xóa dòng này)
+# alembic/versions/
+
+# Docker
+*.pid
+*.seed
+
+# Others
+*.swp
