@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, Request, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps.db import get_db
+from app.repositories.auth_repository import AuthRepository
 from app.schemas.auth import (
+    GoogleLoginRequest,
     LoginRequest,
     LogoutRequest,
     RefreshRequest,
@@ -29,7 +30,7 @@ async def register(
     request: RegisterRequest,
     db: AsyncSession = Depends(get_db),
 ) -> UserMeResponse:
-    service = AuthService(db)
+    service = AuthService(AuthRepository(db))
     return await service.register(request)
 
 
@@ -48,8 +49,22 @@ async def login(
     request: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
-    service = AuthService(db)
+    service = AuthService(AuthRepository(db))
     return await service.login(request)
+
+
+@router.post(
+    "/google/login",
+    response_model=TokenResponse,
+    summary="Đăng nhập với Google",
+    description="Xác thực Google ID token, đăng nhập hoặc tạo user mới provider=google.",
+)
+async def login_with_google(
+    request: GoogleLoginRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    service = AuthService(AuthRepository(db))
+    return await service.login_with_google(request.id_token)
 
 
 # ── POST /auth/refresh ────────────────────────────────────────────────────────
@@ -67,7 +82,7 @@ async def refresh_token(
     request: RefreshRequest,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
-    service = AuthService(db)
+    service = AuthService(AuthRepository(db))
     return await service.refresh(request)
 
 
@@ -77,16 +92,11 @@ async def refresh_token(
     "/logout",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Đăng xuất",
-    description="Thu hồi access token (Redis blacklist) và refresh token (DB revoke) ngay lập tức.",
+    description="Thu hồi refresh token trong DB (idempotent).",
 )
 async def logout(
     body: LogoutRequest,
-    credentials: HTTPAuthorizationCredentials | None = Depends(HTTPBearer(auto_error=False)),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    service = AuthService(db)
-    access_token = credentials.credentials if credentials else None
-    await service.logout(
-        access_token=access_token,
-        refresh_token_raw=body.refresh_token,
-    )
+    service = AuthService(AuthRepository(db))
+    await service.logout(refresh_token_raw=body.refresh_token)

@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # ── Google Vision ─────────────────────────────────────────────────────────
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
 
+    # ── Google OAuth ──────────────────────────────────────────────────────────
+    GOOGLE_OAUTH_CLIENT_ID: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -47,3 +50,4 @@ def get_settings() -> Settings:
 
 # Shortcut để dùng trong Depends()
 settings = get_settings()
+

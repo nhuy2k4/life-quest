@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import CredentialsException, ForbiddenException
-from app.core.security import decode_access_token, is_token_blacklisted
+from app.core.security import decode_access_token
 from app.deps.db import get_db
 from app.models.user import User
 
@@ -38,10 +38,9 @@ async def get_current_user(
     Dependency xác thực JWT và trả về CurrentUser context.
 
     Flow:
-    1. Decode JWT → lấy user_id, role, jti
-    2. Check jti trong Redis blacklist (logout/revoke)
-    3. Query user từ DB (không dùng thông tin trong token nữa — SSoT)
-    4. Check is_banned → 403
+    1. Decode JWT → lấy user_id
+    2. Query user từ DB (không dùng thông tin trong token nữa — SSoT)
+    3. Check is_banned → 403
     """
     token = credentials.credentials
 
@@ -53,14 +52,8 @@ async def get_current_user(
         raise CredentialsException("Token không hợp lệ")
 
     user_id: str | None = payload.get("sub")
-    jti: str | None = payload.get("jti")
-
-    if not user_id or not jti:
+    if not user_id:
         raise CredentialsException("Token thiếu thông tin cần thiết")
-
-    # Kiểm tra token có bị blacklist không (sau logout)
-    if await is_token_blacklisted(jti):
-        raise CredentialsException("Token đã bị thu hồi")
 
     # Query user từ DB — đảm bảo role/ban status luôn mới nhất
     result = await db.execute(

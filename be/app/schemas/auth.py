@@ -66,6 +66,16 @@ class LogoutRequest(BaseModel):
     refresh_token: str
 
 
+class GoogleLoginRequest(BaseModel):
+    id_token: str
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {"id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6Ii4uLiJ9..."}
+        }
+    }
+
+
 # ── Response Schemas ──────────────────────────────────────────────────────────
 
 class TokenResponse(BaseModel):

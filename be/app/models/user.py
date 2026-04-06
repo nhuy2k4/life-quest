@@ -1,10 +1,15 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from app.models.auth import Level, RefreshToken
+    from app.models.user_preference import UserPreference
 
 
 class User(Base, UUIDMixin, TimestampMixin):
@@ -30,7 +35,9 @@ class User(Base, UUIDMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    provider: Mapped[str] = mapped_column(String(20), nullable=False, default="local")
+    provider_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     # ── Level & Gamification ──────────────────────────────────────────────────
     level_id: Mapped[int] = mapped_column(
