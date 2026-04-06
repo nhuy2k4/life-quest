@@ -12,6 +12,7 @@ from app.core.redis import close_redis, get_redis_client
 from app.middleware.cors import setup_cors
 from app.middleware.error_handler import ErrorHandlerMiddleware
 from app.middleware.logging import LoggingMiddleware
+from app.middleware.online_tracking import OnlineTrackingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 
 # ── Logging setup ─────────────────────────────────────────────────────────────
@@ -55,6 +56,7 @@ app = FastAPI(
 app.add_middleware(ErrorHandlerMiddleware)
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(RateLimitMiddleware)
+app.add_middleware(OnlineTrackingMiddleware)
 setup_cors(app)  # CORS phải ở trong cùng (applied first)
 
 # ── Exception handlers ────────────────────────────────────────────────────────
