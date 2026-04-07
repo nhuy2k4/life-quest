@@ -7,7 +7,7 @@ Create Date: 2026-04-03 15:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
+from sqlalchemy.dialects.postgresql import UUID
 
 revision = '0001_initial_tables'
 down_revision = None
@@ -81,8 +81,8 @@ def upgrade():
         'user_preferences',
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
         sa.Column('user_id', UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, unique=True),
-        sa.Column('interests', ARRAY(sa.Integer()), nullable=False, server_default='{}'),
-        sa.Column('interest_weights', JSONB(), nullable=False, server_default='{}'),
+        sa.Column('interests', sa.JSON(), nullable=False, server_default='[]'),
+        sa.Column('interest_weights', sa.JSON(), nullable=False, server_default='{}'),
         sa.Column('activity_level', sa.String(20), nullable=True),
         sa.Column('location_enabled', sa.Boolean(), nullable=False, default=True),
         sa.Column('notification_enabled', sa.Boolean(), nullable=False, default=True),
@@ -142,8 +142,8 @@ def upgrade():
         sa.Column('image_url', sa.String(500), nullable=False),
         sa.Column('cloudinary_public_id', sa.String(255), nullable=False),
         sa.Column('file_hash', sa.String(64), nullable=False),
-        sa.Column('exif_data', JSONB(), nullable=True),
-        sa.Column('cheat_flags', JSONB(), nullable=True),
+        sa.Column('exif_data', sa.JSON(), nullable=True),
+        sa.Column('cheat_flags', sa.JSON(), nullable=True),
         sa.Column('ai_score', sa.Float(), nullable=True),
         sa.Column('status', sa.String(20), nullable=False, default='pending'),
         sa.Column('is_suspicious', sa.Boolean(), nullable=False, default=False),
@@ -160,7 +160,7 @@ def upgrade():
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
         sa.Column('name', sa.String(100), nullable=False, unique=True),
         sa.Column('icon', sa.String(100), nullable=True),
-        sa.Column('criteria', JSONB(), nullable=False),
+        sa.Column('criteria', sa.JSON(), nullable=False),
     )
 
     # ── User Badges ───────────────────────────────────────────────────────
@@ -240,7 +240,7 @@ def upgrade():
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
         sa.Column('user_id', UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
         sa.Column('type', sa.String(50), nullable=False),
-        sa.Column('data', JSONB(), nullable=True),
+        sa.Column('data', sa.JSON(), nullable=True),
         sa.Column('is_read', sa.Boolean(), nullable=False, default=False),
         sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
     )
