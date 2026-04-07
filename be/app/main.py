@@ -64,9 +64,21 @@ setup_cors(app)  # CORS phải ở trong cùng (applied first)
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     """Handle FastAPI/Starlette HTTP exceptions → chuẩn hóa response."""
+    status_to_code = {
+        400: "BAD_REQUEST",
+        401: "UNAUTHORIZED",
+        403: "FORBIDDEN",
+        404: "NOT_FOUND",
+        409: "CONFLICT",
+        422: "VALIDATION_ERROR",
+        429: "RATE_LIMITED",
+    }
     return JSONResponse(
         status_code=exc.status_code,
-        content={"detail": exc.detail},
+        content={
+            "detail": exc.detail,
+            "error_code": status_to_code.get(exc.status_code, "HTTP_ERROR"),
+        },
         headers=getattr(exc, "headers", None),
     )
 

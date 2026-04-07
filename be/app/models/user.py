@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDMixin
+from app.models.enums import AuthProvider, UserRole, sql_enum
 
 if TYPE_CHECKING:
     from app.models.auth import Level, RefreshToken
@@ -36,7 +37,11 @@ class User(Base, UUIDMixin, TimestampMixin):
         index=True,
     )
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    provider: Mapped[str] = mapped_column(String(20), nullable=False, default="local")
+    provider: Mapped[AuthProvider] = mapped_column(
+        sql_enum(AuthProvider, name="auth_provider_enum"),
+        nullable=False,
+        default=AuthProvider.LOCAL,
+    )
     provider_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     # ── Level & Gamification ──────────────────────────────────────────────────
@@ -50,10 +55,10 @@ class User(Base, UUIDMixin, TimestampMixin):
     trust_score: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
 
     # ── Access Control ────────────────────────────────────────────────────────
-    role: Mapped[str] = mapped_column(
-        String(20),
+    role: Mapped[UserRole] = mapped_column(
+        sql_enum(UserRole, name="user_role_enum"),
         nullable=False,
-        default="user",
+        default=UserRole.USER,
     )
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_banned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -79,7 +84,7 @@ class User(Base, UUIDMixin, TimestampMixin):
 
     @property
     def is_admin(self) -> bool:
-        return self.role == "admin"
+        return self.role == UserRole.ADMIN
 
     def __repr__(self) -> str:
         return f"<User {self.username} ({self.role})>"
