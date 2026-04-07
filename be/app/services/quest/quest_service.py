@@ -4,8 +4,8 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import BadRequestException, ConflictException, ForbiddenException, NotFoundException
-from app.models.submission import SubmissionStatus
-from app.models.user_quest import UserQuestStatus
+from app.models.enums import SubmissionStatus, UserQuestStatus
+from app.models.user_quest import STARTED_STATUSES
 from app.repositories.quest_repository import QuestRepository
 from app.schemas.quest import (
 	QuestDetailResponse,
@@ -137,11 +137,12 @@ class QuestService:
 		if user_quest is None:
 			raise BadRequestException("Bạn cần bắt đầu quest trước khi nộp")
 
-		if user_quest.normalized_status not in UserQuestStatus.STARTED_STATUSES:
+		if user_quest.normalized_status not in STARTED_STATUSES:
 			raise ConflictException("Quest không ở trạng thái có thể nộp")
 
 		now = datetime.now(timezone.utc)
-		if user_quest.expires_at is not None and user_quest.expires_at <= now:
+		expires_at = self._to_utc_aware(user_quest.expires_at)
+		if expires_at is not None and expires_at <= now:
 			user_quest.status = UserQuestStatus.REJECTED
 			await self.repository.commit()
 			raise BadRequestException("Quest đã hết hạn nộp")
@@ -175,3 +176,12 @@ class QuestService:
 		if time_limit_hours is None:
 			return None
 		return now + timedelta(hours=time_limit_hours)
+
+	@staticmethod
+	def _to_utc_aware(value: datetime | None) -> datetime | None:
+		"""Normalize DB datetime values to UTC-aware for safe comparisons."""
+		if value is None:
+			return None
+		if value.tzinfo is None:
+			return value.replace(tzinfo=timezone.utc)
+		return value

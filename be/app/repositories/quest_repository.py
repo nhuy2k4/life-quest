@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.enums import SubmissionStatus
 from app.models.quest import Quest
 from app.models.submission import Submission
 from app.models.user_quest import UserQuest
@@ -86,7 +87,7 @@ class QuestRepository:
             image_url=image_url,
             cloudinary_public_id=cloudinary_public_id,
             file_hash=file_hash,
-            status="pending",
+            status=SubmissionStatus.PENDING,
             is_suspicious=False,
         )
         self.db.add(submission)
