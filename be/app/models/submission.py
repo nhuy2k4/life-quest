@@ -2,22 +2,15 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, func
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import UUIDMixin
+from app.models.enums import SubmissionStatus, sql_enum
 
 if TYPE_CHECKING:
 	from app.models.user_quest import UserQuest
-
-
-class SubmissionStatus:
-	PENDING = "pending"
-	APPROVED = "approved"
-	REJECTED = "rejected"
-	MANUAL_REVIEW = "manual_review"
 
 
 class Submission(Base, UUIDMixin):
@@ -31,10 +24,15 @@ class Submission(Base, UUIDMixin):
 	image_url: Mapped[str] = mapped_column(String(500), nullable=False)
 	cloudinary_public_id: Mapped[str] = mapped_column(String(255), nullable=False)
 	file_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-	exif_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-	cheat_flags: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+	exif_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+	cheat_flags: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 	ai_score: Mapped[float | None] = mapped_column(Float, nullable=True)
-	status: Mapped[str] = mapped_column(String(20), nullable=False, default=SubmissionStatus.PENDING, index=True)
+	status: Mapped[SubmissionStatus] = mapped_column(
+		sql_enum(SubmissionStatus, name="submission_status_enum"),
+		nullable=False,
+		default=SubmissionStatus.PENDING,
+		index=True,
+	)
 	is_suspicious: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
 	rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 	created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
