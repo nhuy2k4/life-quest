@@ -1,12 +1,12 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy import Boolean, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import UUIDMixin
+from app.models.enums import ActivityLevel, sql_enum
 
 
 class UserPreference(Base, UUIDMixin):
@@ -14,7 +14,7 @@ class UserPreference(Base, UUIDMixin):
     Sở thích người dùng — tạo rỗng khi register, điền khi onboarding.
 
     interests: ARRAY(int) — danh sách category_id đã chọn
-    interest_weights: JSONB — {"category_id": weight} tự cập nhật sau mỗi approve
+    interest_weights: JSON — {"category_id": weight} tự cập nhật sau mỗi approve
     activity_level: 'low' | 'medium' | 'high'
     """
 
@@ -27,17 +27,17 @@ class UserPreference(Base, UUIDMixin):
     )
 
     interests: Mapped[list[int]] = mapped_column(
-        ARRAY(Integer),
+        JSON,
         nullable=False,
-        server_default="{}",
+        default=list,
     )
     interest_weights: Mapped[dict] = mapped_column(
-        JSONB,
+        JSON,
         nullable=False,
-        server_default="{}",
+        default=dict,
     )
-    activity_level: Mapped[Optional[str]] = mapped_column(
-        String(20),
+    activity_level: Mapped[Optional[ActivityLevel]] = mapped_column(
+        sql_enum(ActivityLevel, name="activity_level_enum"),
         nullable=True,
     )
     location_enabled: Mapped[bool] = mapped_column(

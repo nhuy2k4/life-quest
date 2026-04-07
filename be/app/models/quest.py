@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDMixin
+from app.models.enums import QuestDifficulty, sql_enum
 
 if TYPE_CHECKING:
 	from app.models.user_quest import UserQuest
@@ -46,7 +47,11 @@ class Quest(Base, UUIDMixin, TimestampMixin):
 	title: Mapped[str] = mapped_column(String(255), nullable=False)
 	description: Mapped[str | None] = mapped_column(Text, nullable=True)
 	xp_reward: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
-	difficulty: Mapped[str] = mapped_column(String(20), nullable=False, default="medium")
+	difficulty: Mapped[QuestDifficulty] = mapped_column(
+		sql_enum(QuestDifficulty, name="quest_difficulty_enum"),
+		nullable=False,
+		default=QuestDifficulty.MEDIUM,
+	)
 	approval_rate: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
 	time_limit_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
 	location_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
