@@ -2,7 +2,7 @@ import uuid
 from dataclasses import dataclass
 
 import jwt
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +31,7 @@ class CurrentUser:
 
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> CurrentUser:
@@ -67,6 +68,9 @@ async def get_current_user(
     if user.is_banned:
         raise ForbiddenException("Tài khoản đã bị khóa")
 
+    # Expose authenticated user_id for middlewares (logging, online tracking).
+    request.state.user_id = user.id
+
     return CurrentUser(
         id=user.id,
         role=user.role,
@@ -88,6 +92,7 @@ async def require_admin(
 
 
 async def get_current_user_optional(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(optional_bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> CurrentUser | None:
@@ -102,6 +107,7 @@ async def get_current_user_optional(
 
     try:
         return await get_current_user(
+            request=request,
             credentials=HTTPAuthorizationCredentials(scheme="Bearer", credentials=token),
             db=db,
         )
