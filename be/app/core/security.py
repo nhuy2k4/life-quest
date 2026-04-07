@@ -8,7 +8,6 @@ import bcrypt
 import jwt
 
 from app.core.config import settings
-from app.core.redis import redis_delete, redis_exists, redis_set
 
 
 # ── Password hashing ──────────────────────────────────────────────────────────
@@ -31,14 +30,13 @@ def create_access_token(
     user_id: UUID,
     role: str,
     expires_delta: timedelta | None = None,
-) -> tuple[str, str]:
+) -> str:
     """
     Tạo JWT access token.
 
     Returns:
-        (token_string, jti) — jti dùng để blacklist khi logout
+        token_string
     """
-    jti = secrets.token_hex(16)
     expire = datetime.now(timezone.utc) + (
         expires_delta
         or timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -46,7 +44,6 @@ def create_access_token(
     payload: dict[str, Any] = {
         "sub": str(user_id),
         "role": role,
-        "jti": jti,
         "exp": expire,
         "iat": datetime.now(timezone.utc),
     }
@@ -55,7 +52,7 @@ def create_access_token(
         settings.JWT_SECRET_KEY,
         algorithm=settings.JWT_ALGORITHM,
     )
-    return token, jti
+    return token
 
 
 def create_refresh_token() -> tuple[str, str]:
@@ -91,22 +88,3 @@ def decode_access_token(token: str) -> dict[str, Any]:
         algorithms=[settings.JWT_ALGORITHM],
     )
 
-
-# ── Token blacklist (Redis) ───────────────────────────────────────────────────
-
-BLACKLIST_PREFIX = "token_blacklist:"
-
-
-async def blacklist_token(jti: str, expire_at: datetime) -> None:
-    """
-    Thêm jti vào Redis blacklist.
-    TTL = thời gian còn lại đến khi token hết hạn.
-    """
-    now = datetime.now(timezone.utc)
-    ttl_seconds = max(int((expire_at - now).total_seconds()), 1)
-    await redis_set(f"{BLACKLIST_PREFIX}{jti}", "1", ttl=ttl_seconds)
-
-
-async def is_token_blacklisted(jti: str) -> bool:
-    """Kiểm tra jti có trong blacklist không."""
-    return await redis_exists(f"{BLACKLIST_PREFIX}{jti}")

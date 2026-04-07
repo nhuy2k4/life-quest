@@ -49,7 +49,9 @@ def upgrade():
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
         sa.Column('username', sa.String(50), nullable=False, unique=True),
         sa.Column('email', sa.String(100), nullable=False, unique=True),
-        sa.Column('password_hash', sa.String(255), nullable=False),
+        sa.Column('password_hash', sa.String(255), nullable=True),
+        sa.Column('provider', sa.String(20), nullable=False, server_default='local'),
+        sa.Column('provider_id', sa.String(255), nullable=True),
         sa.Column('level_id', sa.Integer(), sa.ForeignKey('levels.id'), default=1),
         sa.Column('xp', sa.Integer(), nullable=False, default=0),
         sa.Column('streak_days', sa.Integer(), nullable=False, default=0),
@@ -60,6 +62,7 @@ def upgrade():
         sa.Column('created_at', sa.DateTime(), server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime(), server_default=sa.func.now(), onupdate=sa.func.now()),
     )
+    op.create_index('ix_users_provider_id', 'users', ['provider_id'])
 
     # ── Refresh Tokens ────────────────────────────────────────────────────
     op.create_table(
@@ -258,6 +261,7 @@ def downgrade():
     op.drop_index('ix_user_badges_user_id')
     op.drop_index('ix_submissions_suspicious')
     op.drop_index('ix_submissions_file_hash')
+    op.drop_index('ix_users_provider_id')
     op.drop_index('ix_submissions_status')
     op.drop_index('ix_user_quests_user_status')
     op.drop_index('ix_quests_is_active')

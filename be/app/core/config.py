@@ -38,6 +38,20 @@ class Settings(BaseSettings):
     # ── Google Vision ─────────────────────────────────────────────────────────
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
 
+    # ── Google OAuth ──────────────────────────────────────────────────────────
+    GOOGLE_OAUTH_CLIENT_ID: str = ""
+
+    # ── SMTP / Email OTP ──────────────────────────────────────────────────────
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = "no-reply@lifequest.local"
+    SMTP_USE_TLS: bool = True
+
+    OTP_VERIFY_EMAIL_TTL_SECONDS: int = 300
+    OTP_RESEND_COOLDOWN_SECONDS: int = 60
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -47,3 +61,4 @@ def get_settings() -> Settings:
 
 # Shortcut để dùng trong Depends()
 settings = get_settings()
+

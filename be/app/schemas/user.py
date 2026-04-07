@@ -41,3 +41,9 @@ class UpdateProfileRequest(BaseModel):
 
     username: Optional[str] = None
     email: Optional[EmailStr] = None
+
+
+class UserMeDataResponse(BaseModel):
+    """Wrapper response cho endpoint trả về dạng {"data": ...}."""
+
+    data: UserMeResponse
