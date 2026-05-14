@@ -28,7 +28,27 @@ logger = logging.getLogger("lifequest")
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 LifeQuest API starting up...")
-    # Khởi tạo Redis connection pool sớm để phát hiện lỗi ngay
+
+    # ── Kiểm tra kết nối Database ngay khi startup ────────────────────────────
+    from sqlalchemy import text
+    from app.core.database import engine
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        logger.info("✅ Database connected — %s", settings.DATABASE_URL.split("@")[-1])
+    except Exception as exc:
+        logger.critical(
+            "❌ Cannot connect to database!\n"
+            "   URL: %s\n"
+            "   Error: %s\n"
+            "   → Kiểm tra: docker ps, docker exec <id> psql -U postgres -c '\\l'\n"
+            "   → Nếu volume cũ: docker-compose down -v && docker-compose up -d",
+            settings.DATABASE_URL,
+            exc,
+        )
+        raise RuntimeError(f"Database connection failed: {exc}") from exc
+
+    # ── Khởi tạo Redis ────────────────────────────────────────────────────────
     await get_redis_client()
     logger.info("✅ Redis connected")
     logger.info("✅ App ready — %s", settings.APP_NAME)

@@ -50,6 +50,7 @@ def upgrade():
         sa.Column('username', sa.String(50), nullable=False, unique=True),
         sa.Column('email', sa.String(100), nullable=False, unique=True),
         sa.Column('password_hash', sa.String(255), nullable=True),
+        sa.Column('is_verified', sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column('provider', sa.String(20), nullable=False, server_default='local'),
         sa.Column('provider_id', sa.String(255), nullable=True),
         sa.Column('level_id', sa.Integer(), sa.ForeignKey('levels.id'), default=1),

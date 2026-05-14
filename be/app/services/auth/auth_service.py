@@ -13,6 +13,7 @@ from app.core.exceptions import (
     ForbiddenException,
 )
 from app.core.security import (
+    blacklist_access_token,
     create_access_token,
     create_refresh_token,
     hash_password,
@@ -90,7 +91,10 @@ class AuthService:
         # Tạo UserPreference rỗng — sẽ điền khi onboarding
         await self.repository.create_user_preference(user.id)
 
-        await self._generate_and_send_email_otp(request.email)
+        if settings.TESTING:
+            await self.repository.set_user_verified(user, True)
+        else:
+            await self._generate_and_send_email_otp(request.email)
 
         await self.repository.commit()
         await self.repository.refresh_user(user)
@@ -214,7 +218,7 @@ class AuthService:
 
     # ── Logout ────────────────────────────────────────────────────────────────
 
-    async def logout(self, refresh_token_raw: str) -> None:
+    async def logout(self, refresh_token_raw: str, access_token: str | None = None) -> None:
         """
         Thu hồi refresh token hiện tại trong DB.
         Nếu token không hợp lệ/đã revoke/đã hết hạn thì bỏ qua (idempotent logout).
@@ -222,6 +226,9 @@ class AuthService:
         # Revoke refresh token trong DB
         token_hash = hash_refresh_token(refresh_token_raw.strip())
         db_token = await self.repository.get_refresh_token(token_hash)
+
+        if access_token:
+            await blacklist_access_token(access_token)
 
         if db_token is None:
             return
@@ -291,7 +298,8 @@ class AuthService:
 
         otp = self.otp_service.generate_otp()
         await self.otp_service.save_reset_password_otp(request.email, otp)
-        await self.email_service.send_reset_password_otp_email(request.email, otp)
+        import asyncio
+        asyncio.create_task(self.email_service.send_reset_password_otp_email(request.email, otp))
         await self.otp_service.mark_reset_password_cooldown(request.email)
 
         return AuthMessageResponse(
@@ -380,4 +388,6 @@ class AuthService:
     async def _generate_and_send_email_otp(self, email: str) -> None:
         otp = self.otp_service.generate_otp()
         await self.otp_service.save_otp_to_redis(email, otp)
-        await self.email_service.send_otp_email(email, otp)
+        # Spawn email task to background so response returns immediately to client
+        import asyncio
+        asyncio.create_task(self.email_service.send_otp_email(email, otp))

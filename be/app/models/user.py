@@ -9,7 +9,11 @@ from app.models.base import TimestampMixin, UUIDMixin
 from app.models.enums import AuthProvider, UserRole, sql_enum
 
 if TYPE_CHECKING:
+    from app.models.audit import AuditLog, RewardLog, SubmissionReview, UserEvent
     from app.models.auth import Level, RefreshToken
+    from app.models.badge import UserBadge
+    from app.models.notification import Notification
+    from app.models.social import Comment, Follow, Like, Post
     from app.models.user_preference import UserPreference
 
 
@@ -79,6 +83,50 @@ class User(Base, UUIDMixin, TimestampMixin):
         "UserPreference",
         back_populates="user",
         uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    posts: Mapped[list["Post"]] = relationship("Post", back_populates="user")
+    comments: Mapped[list["Comment"]] = relationship("Comment", back_populates="user")
+    likes: Mapped[list["Like"]] = relationship("Like", back_populates="user")
+    following: Mapped[list["Follow"]] = relationship(
+        "Follow",
+        foreign_keys="Follow.follower_id",
+        back_populates="follower",
+        cascade="all, delete-orphan",
+    )
+    followers: Mapped[list["Follow"]] = relationship(
+        "Follow",
+        foreign_keys="Follow.following_id",
+        back_populates="following",
+        cascade="all, delete-orphan",
+    )
+    notifications: Mapped[list["Notification"]] = relationship(
+        "Notification",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    badges: Mapped[list["UserBadge"]] = relationship(
+        "UserBadge",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    submission_reviews: Mapped[list["SubmissionReview"]] = relationship(
+        "SubmissionReview",
+        back_populates="reviewer",
+    )
+    reward_logs: Mapped[list["RewardLog"]] = relationship(
+        "RewardLog",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    audit_logs: Mapped[list["AuditLog"]] = relationship(
+        "AuditLog",
+        back_populates="actor",
+    )
+    events: Mapped[list["UserEvent"]] = relationship(
+        "UserEvent",
+        back_populates="user",
         cascade="all, delete-orphan",
     )
 

@@ -25,6 +25,13 @@ class EmailService:
         self.use_tls = use_tls
 
     async def send_otp_email(self, to_email: str, otp: str) -> None:
+        if settings.TESTING or not settings.EMAIL_SENDING_ENABLED:
+            return
+            
+        from fastapi.concurrency import run_in_threadpool
+        import logging
+        logger = logging.getLogger("lifequest.email")
+
         message = EmailMessage()
         message["Subject"] = "Your verification OTP"
         message["From"] = self.smtp_from
@@ -38,17 +45,30 @@ class EmailService:
             )
         )
 
-        try:
+        def _send():
             with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10) as smtp:
                 if self.use_tls:
                     smtp.starttls()
                 if self.smtp_user and self.smtp_password:
                     smtp.login(self.smtp_user, self.smtp_password)
                 smtp.send_message(message)
+
+        try:
+            await run_in_threadpool(_send)
+            logger.info(f"Sent OTP email to {to_email}")
         except Exception as exc:
-            raise BadRequestException("Failed to send OTP email") from exc
+            logger.error(f"Failed to send OTP email to {to_email}: {str(exc)}")
+            # Để debug dev, raise lỗi thay vì nuốt để biết lý do
+            raise BadRequestException(f"Failed to send OTP email: {str(exc)}") from exc
 
     async def send_reset_password_otp_email(self, to_email: str, otp: str) -> None:
+        if settings.TESTING or not settings.EMAIL_SENDING_ENABLED:
+            return
+            
+        from fastapi.concurrency import run_in_threadpool
+        import logging
+        logger = logging.getLogger("lifequest.email")
+
         message = EmailMessage()
         message["Subject"] = "Your password reset OTP"
         message["From"] = self.smtp_from
@@ -62,15 +82,20 @@ class EmailService:
             )
         )
 
-        try:
+        def _send():
             with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10) as smtp:
                 if self.use_tls:
                     smtp.starttls()
                 if self.smtp_user and self.smtp_password:
                     smtp.login(self.smtp_user, self.smtp_password)
                 smtp.send_message(message)
+
+        try:
+            await run_in_threadpool(_send)
+            logger.info(f"Sent reset password email to {to_email}")
         except Exception as exc:
-            raise BadRequestException("Failed to send reset OTP email") from exc
+            logger.error(f"Failed to send reset OTP email to {to_email}: {str(exc)}")
+            raise BadRequestException(f"Failed to send reset OTP email: {str(exc)}") from exc
 
 
 

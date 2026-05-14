@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
 from app.deps.auth import CurrentUser, get_current_user
 from app.deps.db import get_db
 from app.repositories.auth_repository import AuthRepository
@@ -18,6 +20,7 @@ from app.schemas.auth import (
     TokenResponse,
     VerifyEmailRequest,
 )
+from app.deps.auth import CurrentUser, get_current_user
 from app.schemas.user import UserMeResponse
 from app.services.auth.auth_service import AuthService
 from app.services.email.email_service import EmailService, get_email_service
@@ -179,6 +182,9 @@ async def refresh_token(
 )
 async def logout(
     body: LogoutRequest,
+    current_user: CurrentUser = Depends(get_current_user),
     service: AuthService = Depends(get_auth_service),
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
 ) -> None:
-    await service.logout(refresh_token_raw=body.refresh_token)
+    _ = current_user
+    await service.logout(refresh_token_raw=body.refresh_token, access_token=credentials.credentials)

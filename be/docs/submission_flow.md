@@ -2,7 +2,7 @@
 
 ## Overview
 
-Submission là bằng chứng người dùng nộp để hoàn thành quest. Admin có thể duyệt hoặc từ chối submission. Quy trình này đảm bảo rằng trạng thái của quest và XP của người dùng được đồng bộ hóa chính xác.
+Submission là bằng chứng người dùng nộp để hoàn thành quest. Quy trình mới co AI async cham diem, admin la fallback cho manual_review.
 
 ## API Endpoints
 
@@ -85,6 +85,7 @@ Submission là bằng chứng người dùng nộp để hoàn thành quest. Adm
   - `pending`
   - `approved`
   - `rejected`
+  - `manual_review`
 - **UserQuestStatus:**
   - `not_started`
   - `started`
@@ -131,3 +132,48 @@ Submission là bằng chứng người dùng nộp để hoàn thành quest. Adm
   - Khi request body không hợp lệ.
 - **404 Not Found:**
   - Khi submission không tồn tại.
+
+## AI Async Flow (moi)
+
+### Pipeline
+
+1. User submit quest -> tao Submission (pending)
+2. Enqueue Celery task -> status PROCESSING trong worker (noi bo)
+3. VisionService detect labels
+4. AIApprovalService tinh diem
+5. Cap nhat Submission status:
+   - APPROVED: auto cap XP
+   - MANUAL_REVIEW: cho admin xu ly
+
+### Threshold (de xuat)
+
+- score >= 0.85 -> AUTO_APPROVE
+- 0.60 <= score < 0.85 -> MANUAL_REVIEW
+- score < 0.60 -> FAILED_REWARD_ONLY (post khong bi xoa)
+
+### Retry flow
+
+- Vision timeout/loi: retry 3 lan, neu that bai -> MANUAL_REVIEW.
+
+## Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant API as FastAPI
+    participant W as Celery Worker
+    participant V as VisionService
+    participant AI as AIApprovalService
+    participant DB as Postgres
+
+    U->>API: POST /quests/{id}/submit
+    API->>DB: create Submission (pending)
+    API->>W: enqueue approval task
+    W->>DB: load Submission
+    W->>V: detect labels
+    V-->>W: labels + scores
+    W->>AI: score + decision
+    AI-->>W: decision
+    W->>DB: update status + ai_score
+    W->>DB: grant XP if approved
+```

@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException, NotFoundException
+from app.core.redis import get_redis_client
 from app.models.user import User
 from app.models.user_preference import UserPreference
 from app.schemas.preference import PreferenceRequest
@@ -56,6 +57,12 @@ class PreferenceService:
 
 	async def invalidate_cache(self, user_id: str) -> None:
 		"""Hook for recommendation cache invalidation."""
-		# TODO: Add actual redis key invalidation once key naming is finalized.
-		_ = user_id
+		try:
+			client = await get_redis_client()
+			keys = await client.keys(f"recommendations:user:{user_id}:*")
+			if keys:
+				await client.delete(*keys)
+		except Exception:
+			# Redis may be unavailable in local test environments.
+			return
 

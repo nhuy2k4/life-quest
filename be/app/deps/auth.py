@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import CredentialsException, ForbiddenException
-from app.core.security import decode_access_token
+from app.core.security import decode_access_token, is_token_blacklisted
 from app.deps.db import get_db
 from app.models.user import User
 
@@ -50,6 +50,9 @@ async def get_current_user(
     except jwt.ExpiredSignatureError:
         raise CredentialsException("Token đã hết hạn")
     except jwt.InvalidTokenError:
+        raise CredentialsException("Token không hợp lệ")
+
+    if await is_token_blacklisted(payload):
         raise CredentialsException("Token không hợp lệ")
 
     user_id: str | None = payload.get("sub")

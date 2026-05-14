@@ -39,12 +39,15 @@
 
 - Chạy Alembic migration:
   alembic upgrade head
-  hoặc python -m alembic upgrade head
+  hoặc:
+  python -m alembic upgrade head
 - Tạo migration mới:
   alembic revision --autogenerate -m "Tên migration"
 
 - Chạy FastAPI server (dev):
   uvicorn app.main:app --reload
+  hoặc cho mobile:
+  uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ## Khác
 
@@ -63,3 +66,6 @@
 ---
 
 Thay <user>, <database>, <tên_volume>, <image_id> bằng giá trị thực tế của bạn.
+
+Lệnh xóa data user: 
+.\.venv\Scripts\python.exe admin_reset_one_user_data.py <id user> --yes
