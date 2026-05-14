@@ -8,6 +8,7 @@ import bcrypt
 import jwt
 
 from app.core.config import settings
+from app.core.redis import redis_exists, redis_set
 
 
 # ── Password hashing ──────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ def create_access_token(
         "role": role,
         "exp": expire,
         "iat": datetime.now(timezone.utc),
+        "jti": secrets.token_hex(8),
     }
     token = jwt.encode(
         payload,
@@ -87,4 +89,34 @@ def decode_access_token(token: str) -> dict[str, Any]:
         settings.JWT_SECRET_KEY,
         algorithms=[settings.JWT_ALGORITHM],
     )
+
+
+async def blacklist_access_token(token: str) -> None:
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+            options={"verify_exp": False},
+        )
+    except jwt.InvalidTokenError:
+        return
+
+    jti = payload.get("jti")
+    exp = payload.get("exp")
+    if not jti or not exp:
+        return
+
+    ttl = int(exp - datetime.now(timezone.utc).timestamp())
+    if ttl <= 0:
+        return
+
+    await redis_set(f"token_blacklist:{jti}", "1", ttl=ttl)
+
+
+async def is_token_blacklisted(payload: dict[str, Any]) -> bool:
+    jti = payload.get("jti")
+    if not jti:
+        return False
+    return await redis_exists(f"token_blacklist:{jti}")
 

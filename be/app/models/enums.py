@@ -29,6 +29,7 @@ class UserQuestStatus(StrEnum):
 
 class SubmissionStatus(StrEnum):
     PENDING = "pending"
+    PROCESSING = "processing"
     APPROVED = "approved"
     REJECTED = "rejected"
     MANUAL_REVIEW = "manual_review"
@@ -42,6 +43,7 @@ class ActivityLevel(StrEnum):
 
 class XpSource(StrEnum):
     QUEST_APPROVED = "quest_approved"
+    ADMIN_ADJUST = "admin_adjust"
 
 
 def sql_enum(enum_cls: type[StrEnum], name: str) -> SQLEnum:

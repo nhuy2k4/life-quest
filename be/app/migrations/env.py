@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # ── Import tất cả models để Alembic autogenerate nhận diện ───────────────────
 from app.core.database import Base  # noqa: F401 — Base phải được import
 from app.models import (  # noqa: F401
+    audit,
     auth,
     badge,
     notification,

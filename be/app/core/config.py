@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     # ── Redis ─────────────────────────────────────────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # ── POI cache ─────────────────────────────────────────────────────────────
+    POI_CACHE_TTL_SECONDS: int = 300
+    POI_CACHE_ROUNDING: int = 4
+    POI_MAX_RADIUS_M: float = 500.0
+
     # ── JWT ───────────────────────────────────────────────────────────────────
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
@@ -26,6 +31,11 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     APP_NAME: str = "LifeQuest API"
     APP_VERSION: str = "1.0.0"
+    TESTING: bool = False
+
+    # ── ML Ranker ────────────────────────────────────────────────────────────
+    ML_MODEL_PATH: str = ""
+    ML_FEATURE_SCHEMA_PATH: str = ""
 
     # ── CORS ──────────────────────────────────────────────────────────────────
     CORS_ORIGINS: list[str] = ["*"]
@@ -48,9 +58,16 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = "no-reply@lifequest.local"
     SMTP_USE_TLS: bool = True
+    EMAIL_SENDING_ENABLED: bool = True
 
     OTP_VERIFY_EMAIL_TTL_SECONDS: int = 300
     OTP_RESEND_COOLDOWN_SECONDS: int = 60
+
+    # ── Push Notifications ───────────────────────────────────────────────────
+    PUSH_NOTIFICATIONS_ENABLED: bool = True
+    EXPO_PUSH_ENDPOINT: str = "https://exp.host/--/api/v2/push/send"
+    FCM_PROJECT_ID: str = ""
+    FCM_SERVICE_ACCOUNT_FILE: str = ""
 
 
 @lru_cache

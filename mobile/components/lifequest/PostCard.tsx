@@ -1,0 +1,565 @@
+import { Ionicons } from '@expo/vector-icons';
+import { type Href, useRouter } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
+import * as Linking from 'expo-linking';
+import { useMemo, useState } from 'react';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+
+import { CommentSheet } from '@/components/lifequest/CommentSheet';
+import { ImageWithFallback } from '@/components/lifequest/ImageWithFallback';
+import { Avatar } from '@/components/ui/avatar';
+import { ROUTES } from '@/constants/routes';
+import { usePostContext } from '@/contexts/PostContext';
+import { useToast } from '@/contexts/ToastContext';
+import { useUserContext } from '@/contexts/UserContext';
+import { startQuest } from '@/services/questService';
+import { deletePost, followUser, likePost, unfollowUser, unlikePost } from '@/services/socialService';
+import type { Post, Quest } from '@/types';
+import { getItem, StorageKeys } from '@/utils/storage';
+
+type PostCardProps = {
+  post: Post;
+  attachedQuest?: Pick<Quest, 'title' | 'xpReward'> | null;
+};
+
+export function PostCard({ post, attachedQuest = null }: PostCardProps) {
+  const router = useRouter();
+  const { setPosts, hiddenPostIds, hidePost, unhidePost } = usePostContext();
+  const { showToast } = useToast();
+  const { currentUser } = useUserContext();
+  const [liked, setLiked] = useState(Boolean(post.isLiked));
+  const [saved, setSaved] = useState(Boolean(post.isSaved));
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [commentOpen, setCommentOpen] = useState(false);
+  const [likeCount, setLikeCount] = useState(post.likesCount);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Derived Quest data: preferentially use backend quest model, fallback to prop
+  const questData = useMemo(() => {
+    if (post.quest) {
+      return {
+        title: post.quest.title,
+        xpReward: post.quest.xp_reward,
+      };
+    }
+    return attachedQuest;
+  }, [post.quest, attachedQuest]);
+
+  const timeAgo = useMemo(() => post.createdAt, [post.createdAt]);
+  const questId = post.quest?.id;
+  const isQuestCompleted = Boolean(questId && post.submissionId);
+  const canFollow = currentUser?.id !== post.author.id;
+  const isOwner = currentUser?.id === post.author.id;
+  const isHidden = hiddenPostIds.has(post.id);
+
+  const onToggleLike = async () => {
+    const nextLiked = !liked;
+    setLiked(nextLiked);
+    setLikeCount((prev) => (liked ? Math.max(0, prev - 1) : prev + 1));
+    setPosts((prev) =>
+      prev.map((item) =>
+        item.id === post.id
+          ? {
+              ...item,
+              isLiked: nextLiked,
+              likesCount: liked ? Math.max(0, item.likesCount - 1) : item.likesCount + 1,
+            }
+          : item
+      )
+    );
+
+    const token = await getItem<string>(StorageKeys.accessToken);
+    if (!token) return;
+
+    try {
+      if (nextLiked) {
+        await likePost(token, post.id);
+      } else {
+        await unlikePost(token, post.id);
+      }
+    } catch {
+      // Revert on API failure.
+      setLiked((prev) => !prev);
+      setLikeCount((prev) => (nextLiked ? Math.max(0, prev - 1) : prev + 1));
+      setPosts((prev) =>
+        prev.map((item) =>
+          item.id === post.id
+            ? {
+                ...item,
+                isLiked: !nextLiked,
+                likesCount: nextLiked ? Math.max(0, item.likesCount - 1) : item.likesCount + 1,
+              }
+            : item
+        )
+      );
+    }
+  };
+
+  const onToggleFollow = async () => {
+    const nextFollowing = !isFollowing;
+    setIsFollowing(nextFollowing);
+    const token = await getItem<string>(StorageKeys.accessToken);
+    if (!token) return;
+
+    try {
+      if (nextFollowing) {
+        await followUser(token, post.author.id);
+      } else {
+        await unfollowUser(token, post.author.id);
+      }
+    } catch {
+      setIsFollowing((prev) => !prev);
+    }
+  };
+
+  const onSaveQuest = async () => {
+    if (!questId || saved) return;
+    setSaved(true);
+    setPosts((prev) =>
+      prev.map((item) =>
+        item.id === post.id
+          ? {
+              ...item,
+              isSaved: true,
+            }
+          : item
+      )
+    );
+
+    const token = await getItem<string>(StorageKeys.accessToken);
+    if (!token) {
+      setSaved(false);
+      setPosts((prev) =>
+        prev.map((item) =>
+          item.id === post.id
+            ? {
+                ...item,
+                isSaved: false,
+              }
+            : item
+        )
+      );
+      showToast('Bạn chưa đăng nhập.');
+      return;
+    }
+
+    try {
+      await startQuest(token, questId);
+      showToast('Quest đã vào In Progress.');
+    } catch {
+      setSaved(false);
+      setPosts((prev) =>
+        prev.map((item) =>
+          item.id === post.id
+            ? {
+                ...item,
+                isSaved: false,
+              }
+            : item
+        )
+      );
+      showToast('Không thể lưu quest.');
+    }
+  };
+
+  const onCopyLink = async () => {
+    const url = Linking.createURL(`post/${post.id}`);
+    await Clipboard.setStringAsync(url);
+    showToast('Copied link.');
+    setMenuOpen(false);
+  };
+
+  const onHidePost = () => {
+    hidePost(post.id);
+    showToast('Post hidden.');
+    setMenuOpen(false);
+  };
+
+  const onReportPost = () => {
+    showToast('Report submitted.');
+    setMenuOpen(false);
+  };
+
+  const onDeletePost = async () => {
+    const token = await getItem<string>(StorageKeys.accessToken);
+    if (!token) {
+      showToast('Bạn chưa đăng nhập.');
+      return;
+    }
+
+    try {
+      await deletePost(token, post.id);
+      setPosts((prev) => prev.filter((item) => item.id !== post.id));
+      showToast('Post deleted.');
+    } catch {
+      showToast('Delete failed.');
+    } finally {
+      setMenuOpen(false);
+    }
+  };
+
+  if (isHidden) {
+    return (
+      <View style={styles.hiddenCard}>
+        <Text style={styles.hiddenText}>Post hidden</Text>
+        <Pressable style={styles.hiddenUndo} onPress={() => unhidePost(post.id)}>
+          <Text style={styles.hiddenUndoText}>Undo</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <View style={styles.card}>
+        <View style={styles.userRow}>
+          <Pressable style={styles.userInfo} onPress={() => router.push(ROUTES.otherProfile(post.author.id) as Href)}>
+            <Avatar size={36} uri={post.author.avatarUrl} label={post.author.username.charAt(0)} />
+            <View style={styles.userTextBlock}>
+              <Text style={styles.username}>{post.author.username}</Text>
+              {post.location ? (
+                <View style={styles.locationRow}>
+                  <Ionicons name="location-outline" size={11} color="#9CA3AF" />
+                  <Text style={styles.location}>{post.location}</Text>
+                </View>
+              ) : null}
+            </View>
+          </Pressable>
+
+          <View style={styles.rightActions}>
+            {canFollow ? (
+              <Pressable
+                style={[styles.followChip, isFollowing ? styles.followChipMuted : styles.followChipStrong]}
+                onPress={onToggleFollow}
+              >
+                <Ionicons name={isFollowing ? 'checkmark' : 'person-add-outline'} size={14} color={isFollowing ? '#6B7280' : '#11181C'} />
+                <Text style={[styles.followText, isFollowing ? styles.followTextMuted : styles.followTextStrong]}>
+                  {isFollowing ? 'Following' : 'Follow'}
+                </Text>
+              </Pressable>
+            ) : null}
+            <Pressable onPress={() => setMenuOpen(true)}>
+              <Ionicons name="ellipsis-horizontal" size={18} color="#9CA3AF" />
+            </Pressable>
+          </View>
+        </View>
+
+        <Pressable
+          onPress={() => router.push({ pathname: ROUTES.modal.postDetail, params: { postId: post.id } })}
+          style={styles.imageWrap}
+        >
+          <ImageWithFallback uri={post.imageUrl} fallbackText="Post image" height={360} borderRadius={0} />
+          {questData ? (
+            <View style={styles.questRibbon}>
+              <Ionicons name="flash" size={12} color="#fff" />
+              <Text style={styles.questRibbonText}>Quest</Text>
+            </View>
+          ) : null}
+        </Pressable>
+
+        <View style={styles.actionRow}>
+          <View style={styles.leftActionRow}>
+            <Pressable onPress={onToggleLike} style={styles.actionItem}>
+              <Ionicons name={liked ? 'heart' : 'heart-outline'} size={20} color="#11181C" />
+              <Text style={styles.actionCount}>{likeCount}</Text>
+            </Pressable>
+            <Pressable onPress={() => setCommentOpen(true)} style={styles.actionItem}>
+              <Ionicons name="chatbubble-outline" size={20} color="#11181C" />
+              <Text style={styles.actionCount}>{post.commentsCount}</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.textBlock}>
+          <Text style={styles.caption}><Text style={styles.username}>{`${post.author.username} `}</Text>{post.caption}</Text>
+        </View>
+
+        {questData ? (
+          <Pressable 
+            style={styles.questChip} 
+            onPress={() => {
+              const questId = post.quest?.id;
+              if (questId) {
+                router.push({ pathname: ROUTES.modal.questDetail, params: { questId } });
+              } else {
+                router.push(ROUTES.modal.questDetail);
+              }
+            }}
+          >
+            <Ionicons name="flash" size={14} color="#6B7280" />
+            <View style={styles.questTextWrap}>
+              <Text style={styles.questTitle} numberOfLines={1}>{questData.title}</Text>
+              <Text style={styles.questMeta}>{`+${questData.xpReward} XP`}</Text>
+            </View>
+            {questId ? (
+              isQuestCompleted ? (
+                <View style={styles.saveButton}>
+                  <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                </View>
+              ) : (
+                <Pressable style={styles.saveButton} onPress={onSaveQuest} disabled={saved}>
+                  <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={16} color="#11181C" />
+                </Pressable>
+              )
+            ) : null}
+            <Ionicons name="chevron-forward" size={14} color="#D1D5DB" />
+          </Pressable>
+        ) : null}
+
+        {post.commentsCount > 0 ? (
+          <Pressable style={styles.commentsButton} onPress={() => setCommentOpen(true)}>
+            <Text style={styles.commentsText}>{`View all ${post.commentsCount} comments`}</Text>
+          </Pressable>
+        ) : null}
+
+        <Text style={styles.time}>{timeAgo}</Text>
+      </View>
+
+      <CommentSheet
+        open={commentOpen}
+        onClose={() => setCommentOpen(false)}
+        totalComments={post.commentsCount}
+        postId={post.id}
+      />
+
+      <Modal transparent visible={menuOpen} animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={styles.menuOverlay} onPress={() => setMenuOpen(false)}>
+          <View style={styles.menuSheet}>
+            <Pressable style={styles.menuItem} onPress={onHidePost}>
+              <Text style={styles.menuText}>Hide post</Text>
+            </Pressable>
+            <Pressable style={styles.menuItem} onPress={onCopyLink}>
+              <Text style={styles.menuText}>Copy link</Text>
+            </Pressable>
+            <Pressable style={styles.menuItem} onPress={onReportPost}>
+              <Text style={styles.menuText}>Report</Text>
+            </Pressable>
+            {isOwner ? (
+              <Pressable style={[styles.menuItem, styles.menuDanger]} onPress={onDeletePost}>
+                <Text style={[styles.menuText, styles.menuDangerText]}>Delete</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: '#fff',
+    borderBottomColor: '#F3F4F6',
+    borderBottomWidth: 1,
+    paddingBottom: 12,
+  },
+  userRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  userInfo: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  userTextBlock: {
+    gap: 1,
+  },
+  username: {
+    color: '#11181C',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  locationRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 2,
+  },
+  location: {
+    color: '#9CA3AF',
+    fontSize: 11,
+  },
+  rightActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  followChip: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  followChipStrong: {
+    borderColor: '#11181C',
+  },
+  followChipMuted: {
+    borderColor: '#D1D5DB',
+  },
+  followText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  followTextStrong: {
+    color: '#11181C',
+  },
+  followTextMuted: {
+    color: '#6B7280',
+  },
+  imageWrap: {
+    width: '100%',
+  },
+  questRibbon: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(17, 24, 28, 0.85)',
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: 4,
+    left: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    position: 'absolute',
+    top: 10,
+  },
+  questRibbonText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  actionRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+  },
+  leftActionRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 14,
+  },
+  actionItem: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  actionCount: {
+    color: '#11181C',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  textBlock: {
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+  },
+  caption: {
+    color: '#11181C',
+    fontSize: 13,
+  },
+  questChip: {
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    marginHorizontal: 12,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  questTextWrap: {
+    flex: 1,
+  },
+  questTitle: {
+    color: '#1F2937',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  questMeta: {
+    color: '#9CA3AF',
+    fontSize: 11,
+  },
+  saveButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  commentsButton: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+  },
+  commentsText: {
+    color: '#9CA3AF',
+    fontSize: 12,
+  },
+  time: {
+    color: '#D1D5DB',
+    fontSize: 10,
+    letterSpacing: 0.4,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    textTransform: 'uppercase',
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    justifyContent: 'flex-end',
+  },
+  menuSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 18,
+    gap: 4,
+  },
+  menuItem: {
+    paddingVertical: 12,
+  },
+  menuText: {
+    color: '#11181C',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  menuDanger: {
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  menuDangerText: {
+    color: '#B91C1C',
+  },
+  hiddenCard: {
+    borderBottomColor: '#F3F4F6',
+    borderBottomWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+  },
+  hiddenText: {
+    color: '#6B7280',
+    fontSize: 13,
+  },
+  hiddenUndo: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  hiddenUndoText: {
+    color: '#11181C',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+});

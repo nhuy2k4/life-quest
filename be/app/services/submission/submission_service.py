@@ -11,6 +11,7 @@ from app.schemas.submission import (
 	SubmissionResponse,
 )
 from app.services.gamification.xp_service import XpService
+from app.services.notification.notification_service import NotificationService
 
 
 class SubmissionService:
@@ -52,6 +53,7 @@ class SubmissionService:
 					status=item.status,
 					is_suspicious=item.is_suspicious,
 					rejection_reason=item.rejection_reason,
+					retry_count=item.retry_count,
 					created_at=item.created_at,
 				)
 			)
@@ -78,6 +80,15 @@ class SubmissionService:
 			submission_id=submission.id,
 			amount=submission.user_quest.quest.xp_reward,
 		)
+		await NotificationService(self.repository.db).create_notification(
+			user_id=submission.user_quest.user_id,
+			notification_type="quest_complete",
+			data={
+				"submission_id": str(submission.id),
+				"quest_id": str(submission.user_quest.quest_id),
+				"xp_granted": xp_granted,
+			},
+		)
 
 		await self.repository.commit()
 		return AdminSubmissionActionResponse(
@@ -98,6 +109,16 @@ class SubmissionService:
 		submission.status = SubmissionStatus.REJECTED
 		submission.rejection_reason = reason.strip()
 		submission.user_quest.status = UserQuestStatus.REJECTED
+		await NotificationService(self.repository.db).create_notification(
+			user_id=submission.user_quest.user_id,
+			notification_type="quest_rejected",
+			data={
+				"submission_id": str(submission.id),
+				"quest_id": str(submission.user_quest.quest_id),
+				"reason": submission.rejection_reason,
+				"retry_count": submission.retry_count,
+			},
+		)
 
 		await self.repository.commit()
 		return AdminSubmissionActionResponse(

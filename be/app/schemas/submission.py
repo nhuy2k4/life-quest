@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 SubmissionStatus = Literal["pending", "approved", "rejected", "manual_review"]
-AdminSubmissionFilterStatus = Literal["pending", "approved", "rejected", "manual_review"]
+AdminSubmissionFilterStatus = Literal["pending", "processing", "approved", "rejected", "manual_review"]
 
 
 class SubmissionResponse(BaseModel):
@@ -16,6 +16,7 @@ class SubmissionResponse(BaseModel):
 	status: SubmissionStatus
 	is_suspicious: bool
 	rejection_reason: str | None
+	retry_count: int
 	created_at: datetime
 
 	model_config = {"from_attributes": True}
@@ -41,6 +42,7 @@ class AdminSubmissionItem(BaseModel):
 	status: SubmissionStatus
 	is_suspicious: bool
 	rejection_reason: str | None
+	retry_count: int
 	created_at: datetime
 
 

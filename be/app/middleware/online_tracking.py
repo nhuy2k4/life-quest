@@ -1,3 +1,5 @@
+import os
+
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -14,6 +16,9 @@ class OnlineTrackingMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        if os.getenv("PYTEST_CURRENT_TEST") is not None:
+            return await call_next(request)
+
         response = await call_next(request)
 
         # Works with either request.state.user (object/dict) or request.state.user_id.

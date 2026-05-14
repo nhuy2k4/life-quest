@@ -13,7 +13,9 @@ from app.schemas.quest import (
 	StartQuestResponse,
 	SubmitQuestRequest,
 	SubmitQuestResponse,
+	RecommendQuestFromImageRequest,
 )
+
 from app.services.quest.quest_service import QuestService
 
 router = APIRouter(prefix="/quests", tags=["Quests"])
@@ -91,3 +93,24 @@ async def submit_quest(
 		quest_id=quest_id,
 		payload=payload,
 	)
+
+
+@router.post(
+	"/recommend-from-image",
+	response_model=list[QuestListItemResponse],
+	summary="Gợi ý nhiệm vụ dựa trên nội dung hình ảnh",
+)
+async def recommend_from_image(
+	payload: RecommendQuestFromImageRequest,
+	current_user: CurrentUser = Depends(get_current_user),
+	service: QuestService = Depends(get_quest_service),
+) -> list[QuestListItemResponse]:
+	"""Phân tích ảnh bằng AI và tìm ra các Quest đang hoạt động có chủ đề phù hợp."""
+	return await service.recommend_from_image(
+		user_id=current_user.id,
+		image_url=payload.image_url,
+		lat=payload.lat,
+		lng=payload.lng,
+	)
+
+

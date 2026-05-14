@@ -82,6 +82,10 @@ async def seeded_user_and_quest():
             time_limit_hours=24,
             location_required=False,
             is_active=True,
+            template="Take a photo of a {label}",
+            labels=["coffee"],
+            min_confidence=0.5,
+            poi_required=False,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )
@@ -142,6 +146,11 @@ async def test_list_quests_success(client: AsyncClient):
     payload = response.json()
     assert "items" in payload
     assert payload["total"] >= 1
+    first = payload["items"][0]
+    assert "rendered_text" in first
+    assert "labels" in first
+    assert "min_confidence" in first
+    assert "poi_required" in first
 
 
 @pytest.mark.asyncio
@@ -156,15 +165,16 @@ async def test_start_quest_success(client: AsyncClient, seeded_user_and_quest):
 
 
 @pytest.mark.asyncio
-async def test_start_quest_duplicate(client: AsyncClient, seeded_user_and_quest):
+async def test_start_quest_is_idempotent_while_started(client: AsyncClient, seeded_user_and_quest):
     _, quest_id = seeded_user_and_quest
 
     first = await client.post(f"/api/v1/quests/{quest_id}/start")
     assert first.status_code == 201
 
     second = await client.post(f"/api/v1/quests/{quest_id}/start")
-    assert second.status_code == 409
-    assert second.json()["error_code"] == "CONFLICT"
+    assert second.status_code == 201
+    assert second.json()["user_quest_id"] == first.json()["user_quest_id"]
+    assert second.json()["status"] == "started"
 
 
 @pytest.mark.asyncio
@@ -201,6 +211,150 @@ async def test_submit_after_start_success(client: AsyncClient, seeded_user_and_q
     data = submit_response.json()
     assert data["status"] == "submitted"
     assert data["submission_status"] == "pending"
+    assert data["retry_count"] == 0
+    assert data["max_retry_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_submit_same_image_is_idempotent_after_success(client: AsyncClient, seeded_user_and_quest):
+    _, quest_id = seeded_user_and_quest
+
+    await client.post(f"/api/v1/quests/{quest_id}/start")
+    payload = {
+        "image_url": "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+        "cloudinary_public_id": "sample",
+        "file_hash": "c" * 32,
+    }
+
+    first_response = await client.post(f"/api/v1/quests/{quest_id}/submit", json=payload)
+    second_response = await client.post(f"/api/v1/quests/{quest_id}/submit", json=payload)
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+    assert second_response.json()["submission_id"] == first_response.json()["submission_id"]
+    assert second_response.json()["status"] == "submitted"
+
+
+@pytest.mark.asyncio
+async def test_retry_rejected_submission_updates_same_submission(client: AsyncClient, admin_client: AsyncClient, seeded_user_and_quest):
+    _, quest_id = seeded_user_and_quest
+
+    await client.post(f"/api/v1/quests/{quest_id}/start")
+    submit_response = await client.post(
+        f"/api/v1/quests/{quest_id}/submit",
+        json={
+            "image_url": "https://res.cloudinary.com/demo/image/upload/old.jpg",
+            "cloudinary_public_id": "old",
+            "file_hash": "r" * 32,
+        },
+    )
+    submission_id = submit_response.json()["submission_id"]
+
+    reject_response = await admin_client.patch(
+        f"/api/v1/admin/submissions/{submission_id}/reject",
+        json={"reason": "Image is invalid"},
+    )
+    assert reject_response.status_code == 200
+
+    retry_response = await client.post(
+        f"/api/v1/quests/{quest_id}/submit",
+        json={
+            "image_url": "https://res.cloudinary.com/demo/image/upload/new.jpg",
+            "cloudinary_public_id": "new",
+            "file_hash": "s" * 32,
+        },
+    )
+    assert retry_response.status_code == 201
+    data = retry_response.json()
+    assert data["submission_id"] == submission_id
+    assert data["retry_count"] == 1
+    assert data["submission_status"] == "pending"
+
+    async with TestSessionLocal() as session:
+        submission = await session.scalar(select(Submission).where(Submission.id == uuid.UUID(submission_id)))
+        assert submission is not None
+        assert submission.image_url.endswith("/new.jpg")
+        assert submission.cloudinary_public_id == "new"
+        assert submission.retry_count == 1
+        assert submission.status == SubmissionStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_retry_rejected_submission_limited_to_three_updates(client: AsyncClient, seeded_user_and_quest):
+    user_id, quest_id = seeded_user_and_quest
+
+    user_quest_id = uuid.uuid4()
+    submission_id = uuid.uuid4()
+    async with TestSessionLocal() as session:
+        session.add(
+            UserQuest(
+                id=user_quest_id,
+                user_id=user_id,
+                quest_id=quest_id,
+                status=UserQuestStatus.REJECTED,
+                started_at=datetime.now(timezone.utc),
+                expires_at=None,
+            )
+        )
+        session.add(
+            Submission(
+                id=submission_id,
+                user_quest_id=user_quest_id,
+                image_url="https://res.cloudinary.com/demo/image/upload/old.jpg",
+                cloudinary_public_id="old",
+                file_hash="t" * 32,
+                status=SubmissionStatus.REJECTED,
+                retry_count=3,
+                is_suspicious=False,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        await session.commit()
+
+    response = await client.post(
+        f"/api/v1/quests/{quest_id}/submit",
+        json={
+            "image_url": "https://res.cloudinary.com/demo/image/upload/new.jpg",
+            "cloudinary_public_id": "new",
+            "file_hash": "u" * 32,
+        },
+    )
+    assert response.status_code == 409
+    assert response.json()["error_code"] == "CONFLICT"
+
+
+@pytest.mark.asyncio
+async def test_start_other_quest_allowed_when_mission_active(client: AsyncClient, seeded_user_and_quest):
+    _, quest_id = seeded_user_and_quest
+    second_quest_id = uuid.uuid4()
+
+    async with TestSessionLocal() as session:
+        session.add(
+            Quest(
+                id=second_quest_id,
+                title="Second quest",
+                description="Second quest description",
+                xp_reward=50,
+                difficulty="easy",
+                approval_rate=1.0,
+                time_limit_hours=24,
+                location_required=False,
+                is_active=True,
+                template="Take a photo of a {label}",
+                labels=["tea"],
+                min_confidence=0.5,
+                poi_required=False,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        await session.commit()
+
+    first = await client.post(f"/api/v1/quests/{quest_id}/start")
+    assert first.status_code == 201
+
+    second = await client.post(f"/api/v1/quests/{second_quest_id}/start")
+    assert second.status_code == 201
 
 
 @pytest.mark.asyncio
