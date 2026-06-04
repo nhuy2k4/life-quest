@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from uuid import UUID
 
 from app.services.user.online_status_service import is_user_online
 from fastapi import APIRouter, Depends
@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.deps.auth import CurrentUser, get_current_user
 from app.deps.db import get_db
 from app.schemas.preference import PreferenceRequest, PreferenceResponse
-from app.schemas.user import UserMeDataResponse, UserMeResponse
+from app.schemas.user import UserMeDataResponse, UserMeResponse, UserPublicProfileDataResponse
 from app.schemas.user import UpdateProfileRequest
 from app.services.user.preference_service import PreferenceService
 from app.services.user.user_service import UserService
@@ -42,6 +42,20 @@ async def get_me(
 ) -> UserMeDataResponse:
 	user = await service.get_me(current_user.id)
 	return UserMeDataResponse(data=UserMeResponse.model_validate(user))
+
+
+@router.get(
+	"/{target_user_id}",
+	response_model=UserPublicProfileDataResponse,
+	summary="Láº¥y public profile cá»§a user khÃ¡c",
+)
+async def get_public_profile(
+	target_user_id: UUID,
+	current_user: CurrentUser = Depends(get_current_user),
+	service: UserService = Depends(get_user_service),
+) -> UserPublicProfileDataResponse:
+	profile = await service.get_public_profile(viewer_id=current_user.id, target_user_id=target_user_id)
+	return UserPublicProfileDataResponse(data=profile)
 
 
 @router.patch(

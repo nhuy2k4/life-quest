@@ -10,7 +10,7 @@ from app.models.base import UUIDMixin
 from app.models.enums import SubmissionStatus, sql_enum
 
 if TYPE_CHECKING:
-	from app.models.audit import AiDetectionLog, RewardLog, SubmissionReview
+	from app.models.audit import AiDetectionLog
 	from app.models.user_quest import UserQuest
 	from app.models.social import Post
 	from app.models.poi import Poi
@@ -62,13 +62,4 @@ class Submission(Base, UUIDMixin):
 		"AiDetectionLog",
 		back_populates="submission",
 		cascade="all, delete-orphan",
-	)
-	reviews: Mapped[list["SubmissionReview"]] = relationship(
-		"SubmissionReview",
-		back_populates="submission",
-		cascade="all, delete-orphan",
-	)
-	reward_logs: Mapped[list["RewardLog"]] = relationship(
-		"RewardLog",
-		back_populates="submission",
 	)

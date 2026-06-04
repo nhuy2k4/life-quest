@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     ML_MODEL_PATH: str = ""
     ML_FEATURE_SCHEMA_PATH: str = ""
 
+    # ── Recommendation log retention ─────────────────────────────────────────
+    RECOMMENDATION_LOG_RETENTION_DAYS: int = 90
+    RECOMMENDATION_LOG_CLEANUP_BATCH_SIZE: int = 5000
+
     # ── CORS ──────────────────────────────────────────────────────────────────
     CORS_ORIGINS: list[str] = ["*"]
 

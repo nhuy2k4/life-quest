@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""Deprecated synthetic recommendation training entrypoint.
+
+The MVP/demo recommendation runtime is explainable rule-based ranking. This
+script remains only for future ML experiments and should not be part of normal
+development or deployment.
+"""
+
 import argparse
 import json
 import sys

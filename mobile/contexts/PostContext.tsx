@@ -22,6 +22,32 @@ type PostContextValue = {
 
 const PostContext = createContext<PostContextValue | undefined>(undefined);
 
+function dedupePosts(posts: Post[]): Post[] {
+  const result: Post[] = [];
+
+  posts.forEach((post) => {
+    const existingIndex = result.findIndex((item) => {
+      if (item.id === post.id) return true;
+      if (item.submissionId && post.submissionId && item.submissionId === post.submissionId) return true;
+      return false;
+    });
+
+    if (existingIndex === -1) {
+      result.push(post);
+      return;
+    }
+
+    result[existingIndex] = {
+      ...result[existingIndex],
+      ...post,
+      id: result[existingIndex].id,
+      createdAt: result[existingIndex].createdAt,
+    };
+  });
+
+  return result;
+}
+
 export function PostProvider({ children }: PropsWithChildren) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [hiddenPostIds, setHiddenPostIds] = useState<Set<string>>(new Set());
@@ -34,7 +60,7 @@ export function PostProvider({ children }: PropsWithChildren) {
       const cached = await getItem<Post[]>(StorageKeys.feedCache);
       if (!mounted) return;
       if (cached && cached.length > 0) {
-        setPosts(cached);
+        setPosts(dedupePosts(cached));
       }
       setHasHydrated(true);
     };
@@ -48,7 +74,7 @@ export function PostProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     if (!hasHydrated) return;
-    void saveItem(StorageKeys.feedCache, posts);
+    void saveItem(StorageKeys.feedCache, dedupePosts(posts));
   }, [hasHydrated, posts]);
 
   const hidePost = (postId: string) => {

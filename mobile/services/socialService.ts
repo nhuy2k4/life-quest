@@ -11,12 +11,17 @@ export type FeedPost = {
   submission_id: string | null;
   submission_image_url: string | null;
   caption?: string | null;
-  quest?: { id: string; title: string; description?: string; xp_reward: number } | null;
+  location_name?: string | null;
+  quest?: { id: string; poi_id?: string | null; title: string; description?: string; xp_reward: number; poi_name?: string | null; } | null;
+  event?: { id: string; title: string } | null;
   user: FeedUser;
   like_count: number;
   comment_count: number;
   liked_by_me: boolean;
+  followed_by_me: boolean;
   created_at: string;
+  final_score?: number;
+  reasons?: string[];
 };
 
 export type FeedResponse = {
@@ -37,18 +42,30 @@ export function mapFeedPost(post: FeedPost): Post {
     submissionId: post.submission_id ?? undefined,
     imageUrl: post.submission_image_url ?? undefined,
     caption: post.caption ?? '',
+    location: post.location_name ?? undefined,
     quest: post.quest
       ? {
           id: post.quest.id,
+          poi_id: post.quest.poi_id ?? null,
           title: post.quest.title,
           description: post.quest.description ?? undefined,
           xp_reward: post.quest.xp_reward,
+          poi_name: post.quest.poi_name ?? null,
+        }
+      : undefined,
+    event: post.event
+      ? {
+          id: post.event.id,
+          title: post.event.title,
         }
       : undefined,
     createdAt: post.created_at,
     likesCount: post.like_count,
     commentsCount: post.comment_count,
     isLiked: post.liked_by_me,
+    followedByMe: post.followed_by_me,
+    recommendationReasons: post.reasons,
+    recommendationScore: post.final_score,
   };
 }
 
@@ -58,11 +75,32 @@ export type FeedPage = {
   hasNext: boolean;
 };
 
-export async function getFeed(token: string, page = 1, pageSize = 20): Promise<FeedPage> {
-  const response = await requestJson<FeedResponse>(`/social/feed?page=${page}&page_size=${pageSize}`, {
+export async function getFeed(
+  token: string,
+  page = 1,
+  pageSize = 20,
+  scope: 'all' | 'following' = 'all'
+): Promise<FeedPage> {
+  const response = await requestJson<FeedResponse>(`/social/feed?page=${page}&page_size=${pageSize}&scope=${scope}`, {
     method: 'GET',
     token,
   });
+
+  return {
+    items: response.items.map(mapFeedPost),
+    page: response.page,
+    hasNext: response.has_next,
+  };
+}
+
+export async function searchPosts(token: string, query: string, page = 1, pageSize = 20): Promise<FeedPage> {
+  const response = await requestJson<FeedResponse>(
+    `/social/search?q=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}`,
+    {
+      method: 'GET',
+      token,
+    }
+  );
 
   return {
     items: response.items.map(mapFeedPost),
@@ -76,13 +114,81 @@ export type PostResponse = {
   submission_id: string | null;
   submission_image_url: string | null;
   caption?: string | null;
-  quest?: { id: string; title: string; description?: string; xp_reward: number } | null;
+  location_name?: string | null;
+  quest?: { id: string; poi_id?: string | null; title: string; description?: string; xp_reward: number; poi_name?: string | null; } | null;
+  event?: { id: string; title: string } | null;
   user: FeedUser;
   like_count: number;
   comment_count: number;
   liked_by_me: boolean;
+  followed_by_me: boolean;
   created_at: string;
 };
+
+export type EventListItem = {
+  id: string;
+  title: string;
+  description?: string | null;
+  banner_url?: string | null;
+  start_at: string;
+  end_at: string;
+  status: 'draft' | 'active' | 'ended';
+};
+
+export type EventDetail = EventListItem & {
+  reward_config: { rank_from: number; rank_to: number; bonus_xp: number; badge_id?: string | null }[];
+  quests: { id: string; title: string; description?: string | null; xp_reward: number }[];
+};
+
+export type EventLeaderboardItem = {
+  rank: number;
+  user: FeedUser;
+  post: {
+    id: string | null;
+    image_url?: string | null;
+    like_count: number;
+    is_deleted: boolean;
+  };
+};
+
+export type EventLeaderboardResponse = {
+  items: EventLeaderboardItem[];
+  total: number;
+};
+
+export async function getActiveEvents(token: string): Promise<EventListItem[]> {
+  return requestJson<EventListItem[]>('/events?status=active', {
+    method: 'GET',
+    token,
+  });
+}
+
+export async function getEventDetail(token: string, eventId: string): Promise<EventDetail> {
+  return requestJson<EventDetail>(`/events/${eventId}`, {
+    method: 'GET',
+    token,
+  });
+}
+
+export async function getEventLeaderboard(token: string, eventId: string, limit = 5): Promise<EventLeaderboardResponse> {
+  return requestJson<EventLeaderboardResponse>(`/events/${eventId}/leaderboard?limit=${limit}`, {
+    method: 'GET',
+    token,
+  });
+}
+
+export async function getEventPosts(token: string, eventId: string, page = 1, pageSize = 20): Promise<FeedPage> {
+  const response = await requestJson<FeedResponse>(`/events/${eventId}/posts?page=${page}&page_size=${pageSize}`, {
+    method: 'GET',
+    token,
+  });
+
+  return {
+    items: response.items.map(mapFeedPost),
+    page: response.page,
+    hasNext: response.has_next,
+  };
+}
 
 /**
  * Tạo social post.
@@ -94,7 +200,9 @@ export async function createPost(
     submissionId?: string | null; 
     imageUrl?: string | null; 
     caption?: string | null; 
+    locationName?: string | null;
     questId?: string | null;
+    poiId?: string | null;
   }
 ): Promise<PostResponse> {
   return requestJson<PostResponse>('/social/posts', {
@@ -104,7 +212,9 @@ export async function createPost(
       submission_id: payload.submissionId || undefined,
       image_url: payload.imageUrl || undefined,
       caption: payload.caption || undefined,
+      location_name: payload.locationName || undefined,
       quest_id: payload.questId || undefined,
+      poi_id: payload.poiId || undefined,
     }),
   });
 }
@@ -163,12 +273,13 @@ export async function listComments(
   return response.items;
 }
 
-export async function addComment(token: string, postId: string, content: string): Promise<void> {
-  await requestJson(`/social/posts/${postId}/comments`, {
+export async function addComment(token: string, postId: string, content: string): Promise<Post> {
+  const response = await requestJson<PostResponse>(`/social/posts/${postId}/comments`, {
     method: 'POST',
     token,
     body: JSON.stringify({ content }),
   });
+  return mapFeedPost(response);
 }
 
 export async function followUser(token: string, userId: string): Promise<void> {

@@ -11,7 +11,9 @@ import { LQButton } from '@/components/lifequest/LQButton';
 import { XPBadge } from '@/components/lifequest/XPBadge';
 import { Layout } from '@/constants/layout';
 import { ROUTES } from '@/constants/routes';
+import { logRecommendationEvent, type RecommendationSectionKey, type RecommendationScoreBreakdown } from '@/services/recommendationService';
 import { startQuest, getQuestDetail } from '@/services/questService';
+import { warmLocationCache } from '@/services/locationService';
 import { getItem, StorageKeys, setItem } from '@/utils/storage';
 
 
@@ -21,12 +23,27 @@ export default function QuestDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const questId = typeof params.questId === 'string' ? params.questId : undefined;
+  const poiId = typeof params.poiId === 'string' ? params.poiId : undefined;
+  const routePoiName = typeof params.poiName === 'string' ? params.poiName : undefined;
+  const recommendationRequestId = typeof params.recommendationRequestId === 'string' ? params.recommendationRequestId : undefined;
+  const recommendationSection = typeof params.recommendationSection === 'string' ? params.recommendationSection as RecommendationSectionKey : undefined;
+  const recommendationRank = typeof params.recommendationRank === 'string' ? Number(params.recommendationRank) : undefined;
+  const recommendationScore = typeof params.recommendationScore === 'string' ? Number(params.recommendationScore) : undefined;
+  const recommendationReasons = typeof params.recommendationReasons === 'string' ? params.recommendationReasons : undefined;
+  const recommendationBreakdown = typeof params.recommendationBreakdown === 'string' ? params.recommendationBreakdown : undefined;
   const [questTitle, setQuestTitle] = useState('');
   const [questDescription, setQuestDescription] = useState('');
   const [questXp, setQuestXp] = useState(0);
+  const [baseXp, setBaseXp] = useState(0);
+const [poiBonusXp, setPoiBonusXp] = useState(0);
+const [totalXpWithPoi, setTotalXpWithPoi] = useState(0);
+  const [questImageUrl, setQuestImageUrl] = useState<string | null>(null);
   const [userStatus, setUserStatus] = useState<string>('not_started');
   const [isLoading, setIsLoading] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [poiRequired, setPoiRequired] = useState(false);
+  const [poiName, setPoiName] = useState<string | null>(null);
+  const [effectivePoiId, setEffectivePoiId] = useState<string | null>(poiId ?? null);
 
 
   const handleStartQuest = async () => {
@@ -39,7 +56,27 @@ export default function QuestDetailScreen() {
 
       if (userStatus !== 'started') {
         try {
-          await startQuest(token, questId);
+          await startQuest(token, questId, effectivePoiId);
+          if (recommendationRequestId) {
+            let reasons: string[] = [];
+            let scoreBreakdown: RecommendationScoreBreakdown | undefined;
+            try {
+              reasons = recommendationReasons ? JSON.parse(recommendationReasons) : [];
+              scoreBreakdown = recommendationBreakdown ? JSON.parse(recommendationBreakdown) : undefined;
+            } catch {
+              reasons = [];
+            }
+            await logRecommendationEvent(token, {
+              request_id: recommendationRequestId,
+              quest_id: questId,
+              event: 'started',
+              section: recommendationSection,
+              rank: Number.isFinite(recommendationRank) ? recommendationRank : undefined,
+              final_score: Number.isFinite(recommendationScore) ? recommendationScore : undefined,
+              reasons,
+              score_breakdown: scoreBreakdown,
+            });
+          }
         } catch {
           // Ignore conflict
         }
@@ -50,6 +87,8 @@ export default function QuestDetailScreen() {
         questId,
         title: questTitle,
         xp: questXp,
+        poi_id: effectivePoiId,
+        poi_name: poiName,
       });
       router.push(ROUTES.main.camera as Href);
     } finally {
@@ -58,6 +97,8 @@ export default function QuestDetailScreen() {
   };
 
   useEffect(() => {
+    void warmLocationCache();
+
     const loadQuest = async () => {
       if (!questId) return;
       const token = await getItem<string>(StorageKeys.accessToken);
@@ -65,15 +106,26 @@ export default function QuestDetailScreen() {
 
       setIsLoading(true);
       try {
-        const detail = await getQuestDetail(token, questId);
+        const detail = await getQuestDetail(token, questId, poiId);
+        const nextPoiId = detail.poi_id ?? poiId ?? null;
+        const nextPoiName = detail.poi_name ?? routePoiName ?? null;
+        const hasLocationContext = Boolean(nextPoiId || nextPoiName || detail.poi_required);
+
         setQuestTitle(detail.rendered_text);
         if (detail.labels && detail.labels.length > 0) {
           setQuestDescription(`Category: ${detail.labels.join(', ')}`);
         } else {
           setQuestDescription('');
         }
-        setQuestXp(detail.xp_reward);
+setQuestXp(hasLocationContext ? detail.total_xp_with_poi : detail.base_xp);
+setBaseXp(detail.base_xp);
+setPoiBonusXp(detail.poi_bonus_xp);
+setTotalXpWithPoi(detail.total_xp_with_poi);
+  setQuestImageUrl(detail.image_url ?? null);
         setUserStatus(detail.user_status);
+        setPoiRequired(hasLocationContext);
+        setPoiName(nextPoiName);
+        setEffectivePoiId(nextPoiId);
 
       } finally {
         setIsLoading(false);
@@ -81,7 +133,7 @@ export default function QuestDetailScreen() {
     };
 
     void loadQuest();
-  }, [questId]);
+  }, [questId, poiId, routePoiName]);
 
   const { statusLabel, buttonTitle, isButtonDisabled, buttonVariant } = useMemo(() => {
     switch (userStatus) {
@@ -108,8 +160,8 @@ export default function QuestDetailScreen() {
         };
       case 'rejected':
         return {
-          statusLabel: 'Failed (Retry)',
-          buttonTitle: 'Retry Quest',
+          statusLabel: 'Almost there!',
+          buttonTitle: 'Try Again',
           isButtonDisabled: false,
           buttonVariant: 'primary' as const,
         };
@@ -137,7 +189,7 @@ export default function QuestDetailScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
-        <ImageWithFallback fallbackText="Quest" height={220} borderRadius={14} />
+        <ImageWithFallback uri={questImageUrl ?? undefined} fallbackText="Quest" height={220} borderRadius={14} />
 
         <View style={styles.infoWrap}>
           <View style={styles.titleRow}>
@@ -145,15 +197,49 @@ export default function QuestDetailScreen() {
               <Text style={styles.title}>{questTitle}</Text>
               <Text style={styles.description}>{questDescription}</Text>
             </View>
-            <XPBadge xp={questXp} />
+            <XPBadge xp={baseXp} />
           </View>
 
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Text style={styles.statLabel}>Status</Text>
+              <Text style={styles.statLabel}>Trạng thái</Text>
               <Text style={[styles.statValue, { color: userStatus === 'approved' ? '#10B981' : '#11181C' }]}>{statusLabel}</Text>
             </View>
+
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Thưởng cơ bản</Text>
+              <Text style={styles.statValue}>{`+${baseXp} XP`}</Text>
+            </View>
+
+            {poiRequired ? (
+              <View style={styles.statItem}>
+                <Text style={styles.statLabelGreen}>Thưởng Vị trí</Text>
+                <Text style={styles.statValueGreen}>{`+${poiBonusXp} XP`}</Text>
+              </View>
+            ) : null}
           </View>
+
+          {poiRequired ? (
+            <View style={styles.locationReqCard}>
+              <View style={styles.locationReqHeader}>
+                <Ionicons name="location" size={16} color="#10B981" />
+                <Text style={styles.locationReqTitle}>Nhiệm vụ có Vị trí (+50% XP)</Text>
+              </View>
+              <Text style={styles.locationReqDesc}>
+                Bạn có thể hoàn thành nhiệm vụ này theo cách cơ bản để nhận {baseXp} XP, hoặc chụp ảnh kèm định vị GPS ngay tại địa điểm {poiName ? `"${poiName}"` : 'quy định'} để nhận thêm {poiBonusXp} XP, tổng cộng {totalXpWithPoi} XP.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.locationReqCardBase}>
+              <View style={styles.locationReqHeader}>
+                <Ionicons name="sparkles" size={16} color="#F59E0B" />
+                <Text style={styles.locationReqTitleBase}>Nhiệm vụ Cơ bản</Text>
+              </View>
+              <Text style={styles.locationReqDescBase}>
+                Đây là nhiệm vụ chụp ảnh cơ bản, bạn có thể thực hiện ở bất kỳ đâu để nhận {baseXp} XP.
+              </Text>
+            </View>
+          )}
 
           <View style={styles.actionsWrap}>
             <LQButton 
@@ -274,5 +360,56 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 12,
     right: 16,
+  },
+  locationReqCard: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    gap: 6,
+  },
+  locationReqHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  locationReqTitle: {
+    color: '#065F46',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  locationReqDesc: {
+    color: '#047857',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  locationReqCardBase: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    gap: 6,
+  },
+  locationReqTitleBase: {
+    color: '#92400E',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  locationReqDescBase: {
+    color: '#B45309',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  statLabelGreen: {
+    color: '#10B981',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  statValueGreen: {
+    color: '#10B981',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

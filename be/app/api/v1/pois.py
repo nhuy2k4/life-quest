@@ -18,9 +18,10 @@ router = APIRouter(prefix="/pois", tags=["POI"])
 async def suggest_poi(
     lat: float = Query(..., ge=-90, le=90),
     lng: float = Query(..., ge=-180, le=180),
+    accuracy_m: float | None = Query(default=None, ge=0),
     db: AsyncSession = Depends(get_db),
 ) -> PoiSuggestionResponse:
-    match = await match_poi(db=db, lat=lat, lng=lng)
+    match = await match_poi(db=db, lat=lat, lng=lng, accuracy_m=accuracy_m)
     if match is None:
         return PoiSuggestionResponse(
             poi_id=None,

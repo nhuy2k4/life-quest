@@ -44,6 +44,13 @@
 - Tạo migration mới:
   alembic revision --autogenerate -m "Tên migration"
 
+- Dọn `recommendation_logs` cũ thủ công:
+  .\.venv\Scripts\python.exe -c "from app.workers.maintenance_tasks import prune_recommendation_logs; prune_recommendation_logs()"
+
+- Env kiểm soát retention log recommendation:
+  RECOMMENDATION_LOG_RETENTION_DAYS=90
+  RECOMMENDATION_LOG_CLEANUP_BATCH_SIZE=5000
+
 - Chạy FastAPI server (dev):
   uvicorn app.main:app --reload
   hoặc cho mobile:
@@ -69,3 +76,6 @@ Thay <user>, <database>, <tên_volume>, <image_id> bằng giá trị thực tế
 
 Lệnh xóa data user: 
 .\.venv\Scripts\python.exe admin_reset_one_user_data.py <id user> --yes
+
+.\.venv\Scripts\python.exe admin_reset_one_user_data.py 24640f56-fd93-4f31-bb42-38da40dbb025 --yes
+python admin_reset_one_user_data_keep_prefs.py 24640f56-fd93-4f31-bb42-38da40dbb025 --yes

@@ -21,7 +21,7 @@
 
 **Các file/điểm thay đổi chính:**
 
-- **Models / DB:** app/models/recommendation.py (RecommendationLog, QuestStatsDaily, UserQuestStats, UserAiStats, TrendingScore)
+- **Models / DB:** app/models/recommendation.py (RecommendationLog). Legacy stats tables were removed; ranking now derives directly from recommendation logs, posts, user quests, and quest categories.
 - **Migrations:** app/migrations/versions/0018_recommendation_v2_tables.py (tạo bảng mới) và điều chỉnh 0017_seed_ai_quests.py (fix JSON/timestamp)
 - **Schemas:** app/schemas/recommendation.py (thêm request_id, reasons enum, score_breakdown, log request schema)
 - **Service:** app/services/recommendation/recommendation_service.py (candidate gen, scoring, rerank, logging)

@@ -16,6 +16,7 @@ export const ROUTES = {
     cameraResult: '/(main)/camera-result',
     questLog: '/(main)/quest-log',
     notifications: '/(main)/notifications',
+    chat: '/(main)/chat',
     profile: '/(main)/profile',
     settings: '/(main)/settings',
     editProfile: '/(main)/settings/edit-profile',
@@ -25,6 +26,8 @@ export const ROUTES = {
   modal: {
     postDetail: '/post-detail',
     questDetail: '/quest-detail',
+    eventDetail: '/event-detail',
+    chatDetail: '/chat-detail',
   },
   otherProfile: (id: string) => `/(main)/other-profile/${id}`,
 } as const;

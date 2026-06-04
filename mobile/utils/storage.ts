@@ -7,6 +7,8 @@ export const StorageKeys = {
   attachedQuest: 'lq_attached_quest',
   suggestionFrom: 'lq_suggestion_from',
   feedCache: 'lq_feed_cache',
+  lastLocation: 'lq_last_location',
+  searchHistory: 'lq_search_history',
   accessToken: 'lq_access_token',
   refreshToken: 'lq_refresh_token',
   pushToken: 'lq_push_token',

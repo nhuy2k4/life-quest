@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.poi import Poi
@@ -14,6 +14,11 @@ class PoiRepository:
 
     async def get_by_id(self, poi_id: uuid.UUID) -> Poi | None:
         return await self.db.scalar(select(Poi).where(Poi.id == poi_id))
+
+    async def get_max_active_radius_m(self) -> float | None:
+        return await self.db.scalar(
+            select(func.max(Poi.radius_m)).where(Poi.is_active.is_(True))
+        )
 
     async def list_active_in_bbox(
         self,

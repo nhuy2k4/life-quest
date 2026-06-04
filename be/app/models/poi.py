@@ -8,7 +8,6 @@ from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
-    from app.models.quest import Quest
     from app.models.submission import Submission
 
 
@@ -28,5 +27,4 @@ class Poi(Base, UUIDMixin, TimestampMixin):
     external_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
-    quests: Mapped[list["Quest"]] = relationship("Quest", back_populates="poi")
     submissions: Mapped[list["Submission"]] = relationship("Submission", back_populates="poi")

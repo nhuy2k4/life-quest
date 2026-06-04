@@ -17,10 +17,12 @@ from app.deps.auth import CurrentUser, get_current_user
 from app.deps.db import get_db
 from app.main import app
 from app.models.enums import ActivityLevel, QuestDifficulty, XpSource
+from app.models.poi import Poi
 from app.models.quest import Category, Quest
 from app.models.recommendation import RecommendationLog
 from app.models.user import User
 from app.models.user_preference import UserPreference
+from app.models.user_quest import UserQuest
 from app.models.xp_transaction import XpTransaction
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test_recommendation.db"
@@ -180,13 +182,14 @@ async def test_recommendation_returns_items(seeded_user_and_quests):
 		assert response.status_code == 200
 
 		payload = response.json()
-		assert payload["total"] >= 2
-		assert payload["page"] == 1
-		assert payload["page_size"] == 20
 		assert "request_id" in payload
-		assert payload["items"]
-		assert "recommendation_score" in payload["items"][0]
-		assert "reasons" in payload["items"][0]
+		assert payload["recommended_for_you"]
+		assert payload["sections"]
+		first = payload["recommended_for_you"][0]
+		assert "final_score" in first
+		assert "reasons" in first
+		assert "score_breakdown" in first
+		assert first["score_breakdown"]["interest"] >= 0
 	app.dependency_overrides.clear()
 
 
@@ -196,7 +199,7 @@ async def test_recommendation_fallback_without_preferences(seeded_user_without_p
 		response = await client.get("/api/v1/recommendations/quests")
 		assert response.status_code == 200
 		payload = response.json()
-		assert payload["items"]
+		assert payload["explore_new_things"] or payload["recommended_for_you"]
 	app.dependency_overrides.clear()
 
 
@@ -207,22 +210,80 @@ async def test_recommendation_log_endpoint(seeded_user_and_quests):
 		assert response.status_code == 200
 		payload = response.json()
 		request_id = uuid.UUID(payload["request_id"])
-		quest_id = payload["items"][0]["id"]
+		item = payload["recommended_for_you"][0]
+		quest_id = item["id"]
 
 		log_payload = {
 			"request_id": str(request_id),
 			"quest_id": quest_id,
 			"event": "clicked",
+			"section": "recommended_for_you",
 			"rank": 1,
-			"score": payload["items"][0]["recommendation_score"],
-			"reasons": payload["items"][0]["reasons"],
+			"final_score": item["final_score"],
+			"reasons": item["reasons"],
+			"score_breakdown": item["score_breakdown"],
 		}
-		log_response = await client.post("/api/v1/recommendations/log", json=log_payload)
+		log_response = await client.post("/api/v1/recommendations/events", json=log_payload)
 		assert log_response.status_code == 200
 
 	async with TestSessionLocal() as session:
 		rows = await session.execute(select(RecommendationLog).where(RecommendationLog.request_id == request_id))
 		assert rows.scalars().first() is not None
+	app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_recommendation_debug_nearby_and_continue(seeded_user_and_quests):
+	async with TestSessionLocal() as session:
+		poi = Poi(
+			name="Demo Cafe",
+			poi_type="cafe",
+			latitude=10.0,
+			longitude=10.0,
+			radius_m=500,
+			source="test",
+			external_id=uuid.uuid4().hex[:8],
+		)
+		quest = Quest(
+			id=uuid.uuid4(),
+			title="Nearby cafe quest",
+			description="nearby",
+			xp_reward=90,
+			difficulty=QuestDifficulty.EASY,
+			approval_rate=1.0,
+			time_limit_hours=24,
+			location_required=True,
+			poi_required=True,
+			is_active=True,
+			poi=poi,
+			created_at=datetime.now(timezone.utc),
+			updated_at=datetime.now(timezone.utc),
+		)
+		session.add_all([poi, quest])
+		await session.flush()
+		session.add(
+			UserQuest(
+				user_id=seeded_user_and_quests,
+				quest_id=quest.id,
+				status="started",
+				started_at=datetime.now(timezone.utc),
+			)
+		)
+		await session.commit()
+
+	async with _build_client(seeded_user_and_quests, onboarding_completed=True) as client:
+		response = await client.get(
+			"/api/v1/recommendations/quests",
+			params={"lat": 10.0, "lng": 10.0, "debug": "true"},
+		)
+		assert response.status_code == 200
+		payload = response.json()
+		continue_items = payload["continue_your_missions"]
+		assert continue_items
+		assert continue_items[0]["score_breakdown"]["continue"] == 35.0
+		assert continue_items[0]["debug"] is not None
+		nearby_items = payload["trending_near_you"]
+		assert any(item["score_breakdown"]["nearby"] == 15.0 for item in nearby_items)
 	app.dependency_overrides.clear()
 
 

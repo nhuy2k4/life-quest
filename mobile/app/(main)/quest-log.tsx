@@ -9,13 +9,15 @@ import { ImageWithFallback } from '@/components/lifequest/ImageWithFallback';
 import { Layout } from '@/constants/layout';
 import { ROUTES } from '@/constants/routes';
 import { useToast } from '@/contexts/ToastContext';
-import { listQuests, type QuestListItem } from '@/services/questService';
+import { listQuestLog, type QuestListItem } from '@/services/questService';
 import { getItem, StorageKeys } from '@/utils/storage';
 
 type TabKey = 'available' | 'inprogress' | 'completed' | 'failed';
 
 type QuestItem = {
   id: string;
+  poiId?: string | null;
+  poiName?: string | null;
   title: string;
   desc: string;
   xp: number;
@@ -37,11 +39,13 @@ type TabDef = {
 function mapQuest(item: QuestListItem): QuestItem {
   return {
     id: item.id,
+    poiId: item.poi_id ?? null,
+    poiName: item.poi_name ?? null,
     title: item.rendered_text,
-    desc: item.labels?.join(', ') ?? '',
+    desc: item.poi_name ?? item.labels?.join(', ') ?? '',
     xp: item.xp_reward,
-    category: item.labels?.[0] ?? 'General',
-    image: undefined,
+    category: item.poi_name ?? item.labels?.[0] ?? 'General',
+    image: item.image_url ?? undefined,
     user_status: item.user_status,
   };
 }
@@ -181,7 +185,6 @@ export default function QuestLogScreen() {
   const [rawQuests, setRawQuests] = useState<QuestListItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
   const [hasNext, setHasNext] = useState(true);
 
   useEffect(() => {
@@ -197,9 +200,8 @@ export default function QuestLogScreen() {
       const token = await getItem<string>(StorageKeys.accessToken);
       if (!token) return;
 
-      const response = await listQuests(token, 1, 50);
+      const response = await listQuestLog(token);
       setRawQuests(response.items);
-      setPage(response.page);
       setHasNext(response.has_next);
     } catch {
       showToast('Could not refresh quests.');
@@ -216,15 +218,16 @@ export default function QuestLogScreen() {
       const token = await getItem<string>(StorageKeys.accessToken);
       if (!token) return;
 
-      const response = await listQuests(token, page + 1, 50);
-      setPage(response.page);
+      const response = await listQuestLog(token);
       setHasNext(response.has_next);
       setRawQuests((prev) => {
-        const seen = new Set(prev.map((item) => item.id));
+        const seen = new Set(prev.map((item) => `${item.id}:${item.poi_id ?? 'base'}`));
         const merged = [...prev];
         response.items.forEach((item) => {
-          if (!seen.has(item.id)) {
+          const key = `${item.id}:${item.poi_id ?? 'base'}`;
+          if (!seen.has(key)) {
             merged.push(item);
+            seen.add(key);
           }
         });
         return merged;
@@ -298,10 +301,10 @@ export default function QuestLogScreen() {
         {currentTab.data.length === 0 ? <EmptyState activeTab={activeTab} /> : null}
         {currentTab.data.map((quest) => (
           <QuestLogCard
-            key={quest.id}
+            key={`${quest.id}:${quest.poiId ?? 'base'}`}
             quest={quest}
             tab={activeTab}
-            onPress={() => router.push({ pathname: ROUTES.modal.questDetail, params: { questId: quest.id } })}
+            onPress={() => router.push({ pathname: ROUTES.modal.questDetail, params: { questId: quest.id, poiId: quest.poiId ?? undefined } })}
           />
         ))}
         {hasNext ? (
@@ -563,6 +566,26 @@ const styles = StyleSheet.create({
   loadMoreText: {
     color: '#11181C',
     fontSize: 13,
+    fontWeight: '600',
+  },
+  locationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    gap: 3,
+    marginLeft: 6,
+  },
+  locationBadgeText: {
+    color: '#10B981',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  metaMutedGreen: {
+    color: '#10B981',
+    fontSize: 12,
     fontWeight: '600',
   },
 });

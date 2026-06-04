@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import case, func, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import case, delete, func, select
 
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from app.models.recommendation import RecommendationLog, QuestStatsDaily, TrendingScore
+from app.models.recommendation import RecommendationLog
 from app.workers.celery_app import celery
 
 logger = logging.getLogger(__name__)
@@ -17,126 +16,71 @@ logger = logging.getLogger(__name__)
 
 @celery.task(name="maintenance.reco_daily_stats")
 def recompute_recommendation_stats(stat_date: str | None = None) -> None:
-	asyncio.run(_recompute_recommendation_stats(stat_date))
+	"""Deprecated compatibility task.
+
+	The MVP recommendation system now derives popularity directly from
+	recommendation_logs/posts and no longer writes quest_stats_daily or
+	trending_scores tables.
+	"""
+	asyncio.run(_log_recommendation_activity_summary(stat_date))
 
 
-@celery.task(name="maintenance.reco_trending_scores")
-def recompute_trending_scores(window: str = "7d") -> None:
-	asyncio.run(_recompute_trending_scores(window))
+@celery.task(name="maintenance.reco_log_retention")
+def prune_recommendation_logs() -> None:
+	"""Delete old recommendation logs in small batches."""
+	asyncio.run(_prune_recommendation_logs())
 
 
-async def _recompute_recommendation_stats(stat_date: str | None) -> None:
-	if stat_date:
-		try:
-			stat_day = date.fromisoformat(stat_date)
-		except ValueError:
-			logger.warning("Invalid stat_date: %s", stat_date)
-			return
-	else:
-		stat_day = datetime.now(timezone.utc).date()
-
+async def _log_recommendation_activity_summary(stat_date: str | None) -> None:
+	cutoff = datetime.now(timezone.utc) - timedelta(days=1)
 	async with AsyncSessionLocal() as session:
 		stmt = (
 			select(
-				RecommendationLog.quest_id,
+				func.count().label("total"),
 				func.sum(case((RecommendationLog.event == "shown", 1), else_=0)).label("shown"),
 				func.sum(case((RecommendationLog.event == "clicked", 1), else_=0)).label("clicked"),
 				func.sum(case((RecommendationLog.event == "started", 1), else_=0)).label("started"),
 				func.sum(case((RecommendationLog.event == "completed", 1), else_=0)).label("completed"),
-				func.sum(case((RecommendationLog.event == "ignored", 1), else_=0)).label("ignored"),
 			)
-			.where(func.date(RecommendationLog.created_at) == stat_day)
-			.group_by(RecommendationLog.quest_id)
+			.select_from(RecommendationLog)
+			.where(RecommendationLog.created_at >= cutoff)
+		)
+		total, shown, clicked, started, completed = (await session.execute(stmt)).one()
+		logger.info(
+			"Recommendation activity summary stat_date=%s total=%s shown=%s clicked=%s started=%s completed=%s",
+			stat_date,
+			int(total or 0),
+			int(shown or 0),
+			int(clicked or 0),
+			int(started or 0),
+			int(completed or 0),
 		)
 
-		rows = (await session.execute(stmt)).all()
-		if not rows:
-			return
 
-		payloads: list[dict] = []
-		for quest_id, shown, clicked, started, completed, ignored in rows:
-			shown = int(shown or 0)
-			clicked = int(clicked or 0)
-			started = int(started or 0)
-			completed = int(completed or 0)
-			ignored = int(ignored or 0)
+async def _prune_recommendation_logs() -> None:
+	retention_days = max(int(settings.RECOMMENDATION_LOG_RETENTION_DAYS), 14)
+	batch_size = max(int(settings.RECOMMENDATION_LOG_CLEANUP_BATCH_SIZE), 100)
+	cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+	total_deleted = 0
 
-			completion_rate = (completed / started) if started > 0 else 0.0
-			popularity_score = (clicked * 0.4) + (started * 0.6) + (completed * 1.0)
-
-			payloads.append(
-				{
-					"id": uuid.uuid4(),
-					"quest_id": quest_id,
-					"stat_date": stat_day,
-					"shown": shown,
-					"clicked": clicked,
-					"started": started,
-					"completed": completed,
-					"ignored": ignored,
-					"completion_rate": completion_rate,
-					"avg_completion_time_s": None,
-					"popularity_score": popularity_score,
-				}
-			)
-
-		insert_stmt = pg_insert(QuestStatsDaily).values(payloads)
-		update_cols = {
-			"shown": insert_stmt.excluded.shown,
-			"clicked": insert_stmt.excluded.clicked,
-			"started": insert_stmt.excluded.started,
-			"completed": insert_stmt.excluded.completed,
-			"ignored": insert_stmt.excluded.ignored,
-			"completion_rate": insert_stmt.excluded.completion_rate,
-			"avg_completion_time_s": insert_stmt.excluded.avg_completion_time_s,
-			"popularity_score": insert_stmt.excluded.popularity_score,
-		}
-		await session.execute(
-			insert_stmt.on_conflict_do_update(
-				constraint="uq_quest_stats_daily_quest_date",
-				set_=update_cols,
-			)
-		)
-		await session.commit()
-
-
-async def _recompute_trending_scores(window: str) -> None:
-	if window != "7d":
-		logger.warning("Unsupported trending window: %s", window)
-		return
-
-	cutoff = datetime.now(timezone.utc).date() - timedelta(days=6)
 	async with AsyncSessionLocal() as session:
-		stmt = (
-			select(
-				QuestStatsDaily.quest_id,
-				func.sum(QuestStatsDaily.popularity_score).label("score"),
+		while True:
+			old_ids = (
+				select(RecommendationLog.id)
+				.where(RecommendationLog.created_at < cutoff)
+				.order_by(RecommendationLog.created_at.asc())
+				.limit(batch_size)
 			)
-			.where(QuestStatsDaily.stat_date >= cutoff)
-			.group_by(QuestStatsDaily.quest_id)
-		)
-		rows = (await session.execute(stmt)).all()
-		if not rows:
-			return
+			result = await session.execute(delete(RecommendationLog).where(RecommendationLog.id.in_(old_ids)))
+			deleted = int(result.rowcount or 0)
+			await session.commit()
+			total_deleted += deleted
+			if deleted < batch_size:
+				break
 
-		payloads = [
-			{
-				"id": uuid.uuid4(),
-				"quest_id": quest_id,
-				"window": window,
-				"score": float(score or 0.0),
-			}
-			for quest_id, score in rows
-		]
-
-		insert_stmt = pg_insert(TrendingScore).values(payloads)
-		await session.execute(
-			insert_stmt.on_conflict_do_update(
-				constraint="uq_trending_scores_quest_window",
-				set_={
-					"score": insert_stmt.excluded.score,
-					"updated_at": func.now(),
-				},
-			)
-		)
-		await session.commit()
+	logger.info(
+		"Recommendation log retention complete retention_days=%s cutoff=%s deleted=%s",
+		retention_days,
+		cutoff.isoformat(),
+		total_deleted,
+	)

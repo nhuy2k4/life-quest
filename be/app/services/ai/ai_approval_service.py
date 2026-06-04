@@ -42,15 +42,14 @@ class AIApprovalService:
 		quest_labels = quest.labels if quest and quest.labels else []
 		label_rules = quest.label_rules if quest else None
 		min_confidence = float(quest.min_confidence or 0.5) if quest else 0.5
-		poi_required = bool(quest.poi_required) if quest else False
 
 		rule_result = evaluate_ai_quest(
 			quest_labels=quest_labels,
 			label_rules=label_rules,
 			min_confidence=min_confidence,
 			vision_labels=serialize_labels(vision_result.labels),
-			poi_required=poi_required,
 			poi_distance_m=submission.poi_distance_m,
+			poi_required=bool(quest.location_required) if quest else False,
 		)
 		anti_cheat_result = evaluate_anti_cheat(file_hash=submission.file_hash, labels=vision_result.labels)
 		score_result = compute_ai_score(

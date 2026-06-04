@@ -34,6 +34,7 @@ type CommentSheetProps = {
   onClose: () => void;
   postId?: string;
   totalComments?: number;
+  onCommentCountChange?: (count: number) => void;
 };
 
 function mapApiComment(comment: ApiCommentItem): CommentItem {
@@ -49,12 +50,13 @@ function mapApiComment(comment: ApiCommentItem): CommentItem {
   };
 }
 
-export function CommentSheet({ open, onClose, postId, totalComments = 0 }: CommentSheetProps) {
+export function CommentSheet({ open, onClose, postId, totalComments = 0, onCommentCountChange }: CommentSheetProps) {
   const [comments, setComments] = useState<CommentItem[]>(initialComments);
   const [inputText, setInputText] = useState('');
   const [replyingTo, setReplyingTo] = useState<{ commentId: string; username: string } | null>(null);
+  const [localTotal, setLocalTotal] = useState(totalComments);
 
-  const total = useMemo(() => totalComments + comments.filter((c) => c.username === 'You').length, [comments, totalComments]);
+  const total = useMemo(() => localTotal, [localTotal]);
 
   const toggleLikeComment = (commentId: string) => {
     setComments((prev) =>
@@ -92,9 +94,11 @@ export function CommentSheet({ open, onClose, postId, totalComments = 0 }: Comme
     if (!inputText.trim()) return;
 
     const token = await getItem<string>(StorageKeys.accessToken);
+    let nextTotal: number | null = null;
     if (token && postId) {
       try {
-        await addComment(token, postId, inputText.trim());
+        const updatedPost = await addComment(token, postId, inputText.trim());
+        nextTotal = updatedPost.commentsCount;
       } catch {
         // Fall back to local insert if API fails.
       }
@@ -138,6 +142,11 @@ export function CommentSheet({ open, onClose, postId, totalComments = 0 }: Comme
       ]);
     }
 
+    setLocalTotal((prev) => {
+      const value = nextTotal ?? prev + 1;
+      onCommentCountChange?.(value);
+      return value;
+    });
     setInputText('');
     setReplyingTo(null);
   };
@@ -158,6 +167,10 @@ export function CommentSheet({ open, onClose, postId, totalComments = 0 }: Comme
 
     void loadComments();
   }, [open, postId]);
+
+  useEffect(() => {
+    setLocalTotal(totalComments);
+  }, [totalComments, postId]);
 
   return (
     <BottomSheetShell open={open} onClose={onClose} height={560}>

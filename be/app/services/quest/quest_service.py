@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import logging
@@ -10,11 +10,11 @@ from app.models.enums import SubmissionStatus, UserQuestStatus
 from app.models.user_quest import STARTED_STATUSES
 from app.repositories.quest_repository import QuestRepository
 from app.schemas.quest import (
-	QuestDetailResponse,
-	QuestListItemResponse,
-	StartQuestResponse,
-	SubmitQuestRequest,
-	SubmitQuestResponse,
+    QuestDetailResponse,
+    QuestListItemResponse,
+    StartQuestResponse,
+    SubmitQuestRequest,
+    SubmitQuestResponse,
 )
 from app.services.quest.quest_renderer import render_quest_text
 from app.services.pipeline.approval_pipeline import enqueue_submission_approval
@@ -27,301 +27,528 @@ MAX_SUBMISSION_RETRY_COUNT = 3
 
 
 class QuestService:
-	"""Quest business logic with strict state-transition checks."""
+    """Quest business logic with strict state-transition checks."""
 
-	def __init__(self, repository: QuestRepository) -> None:
-		self.repository = repository
+    def __init__(self, repository: QuestRepository) -> None:
+        self.repository = repository
 
-	async def list_quests(self, *, user_id: UUID, page: int, page_size: int) -> tuple[list[QuestListItemResponse], int]:
-		offset = (page - 1) * page_size
-		quests, total = await self.repository.list_active_quests(offset=offset, limit=page_size)
+    async def list_quests(self, *, user_id: UUID, page: int, page_size: int) -> tuple[list[QuestListItemResponse], int]:
+        offset = (page - 1) * page_size
+        quests, total = await self.repository.list_active_quests(offset=offset, limit=page_size)
+        since = datetime.now(timezone.utc) - timedelta(days=7)
+        image_map = await self.repository.get_top_post_images_for_quests(
+            quest_ids=[quest.id for quest in quests],
+            since=since,
+        )
 
-		items: list[QuestListItemResponse] = []
-		for quest in quests:
-			user_quest = await self.repository.get_user_quest(user_id=user_id, quest_id=quest.id)
-			items.append(
-				QuestListItemResponse(
-					id=quest.id,
-					rendered_text=render_quest_text(quest.template, quest.labels, None),
-					labels=quest.labels or [],
-					min_confidence=float(quest.min_confidence or 0.5),
-					poi_required=quest.poi_required,
-					xp_reward=quest.xp_reward,
-					is_active=quest.is_active,
-					user_status=user_quest.normalized_status if user_quest else UserQuestStatus.NOT_STARTED,
-				)
-			)
+        items: list[QuestListItemResponse] = []
+        for quest in quests:
+            user_quest = await self.repository.get_user_quest(
+                user_id=user_id,
+                quest_id=quest.id,
+                poi_id=None,
+            )
+            items.append(
+                QuestListItemResponse(
+                    id=quest.id,
+                    poi_id=None,
+                    image_url=image_map.get(quest.id),
+                    rendered_text=render_quest_text(quest.template, quest.labels, None),
+                    labels=quest.labels or [],
+                    min_confidence=float(quest.min_confidence or 0.5),
+                    xp_reward=quest.xp_reward,
+                    is_active=quest.is_active,
+                    user_status=user_quest.normalized_status if user_quest else UserQuestStatus.NOT_STARTED,
+                )
+            )
 
-		return items, total
+        return items, total
 
-	async def get_quest_detail(self, *, user_id: UUID, quest_id: UUID) -> QuestDetailResponse:
-		quest = await self.repository.get_quest_by_id(quest_id)
-		if quest is None or not quest.is_active:
-			raise NotFoundException("Quest khÃ´ng tá»“n táº¡i")
+    async def list_quest_log(self, *, user_id: UUID) -> tuple[list[QuestListItemResponse], int]:
+        quests, _ = await self.repository.list_active_quests(offset=0, limit=500)
+        user_instances = await self.repository.list_user_quest_instances(user_id=user_id)
+        quest_ids = list({quest.id for quest in quests} | {quest.id for _, quest, _ in user_instances})
+        since = datetime.now(timezone.utc) - timedelta(days=7)
+        image_map = await self.repository.get_top_post_images_for_quests(
+            quest_ids=quest_ids,
+            since=since,
+        )
 
-		user_quest = await self.repository.get_user_quest(user_id=user_id, quest_id=quest_id)
-		return QuestDetailResponse(
-			id=quest.id,
-			rendered_text=render_quest_text(quest.template, quest.labels, None),
-			labels=quest.labels or [],
-			min_confidence=float(quest.min_confidence or 0.5),
-			poi_required=quest.poi_required,
-			poi_id=quest.poi_id,
-			xp_reward=quest.xp_reward,
-			is_active=quest.is_active,
-			user_status=user_quest.normalized_status if user_quest else UserQuestStatus.NOT_STARTED,
-			started_at=user_quest.started_at if user_quest else None,
-			expires_at=user_quest.expires_at if user_quest else None,
-		)
+        items: list[QuestListItemResponse] = []
+        for quest in quests:
+            user_quest = await self.repository.get_user_quest(
+                user_id=user_id,
+                quest_id=quest.id,
+                poi_id=None,
+            )
+            items.append(
+                QuestListItemResponse(
+                    id=quest.id,
+                    poi_id=None,
+                    poi_name=None,
+                    image_url=image_map.get(quest.id),
+                    rendered_text=render_quest_text(quest.template, quest.labels, None),
+                    labels=quest.labels or [],
+                    min_confidence=float(quest.min_confidence or 0.5),
+                    xp_reward=quest.xp_reward,
+                    is_active=quest.is_active,
+                    user_status=user_quest.normalized_status if user_quest else UserQuestStatus.NOT_STARTED,
+                )
+            )
 
-	async def start_quest(self, *, user_id: UUID, onboarding_completed: bool, quest_id: UUID) -> StartQuestResponse:
-		if not onboarding_completed:
-			raise ForbiddenException("Báº¡n cáº§n hoÃ n táº¥t onboarding trÆ°á»›c khi báº¯t Ä‘áº§u quest")
+        for user_quest, quest, poi in user_instances:
+            poi_name = poi.name if poi else None
+            base_xp = quest.xp_reward
+            poi_bonus_xp = round(base_xp * 0.5)
+            items.append(
+                QuestListItemResponse(
+                    id=quest.id,
+                    poi_id=user_quest.poi_id,
+                    poi_name=poi_name,
+                    image_url=image_map.get(quest.id),
+                    rendered_text=render_quest_text(quest.template, quest.labels, poi_name),
+                    labels=quest.labels or [],
+                    min_confidence=float(quest.min_confidence or 0.5),
+                    xp_reward=base_xp + poi_bonus_xp,
+                    is_active=quest.is_active,
+                    user_status=user_quest.normalized_status,
+                )
+            )
 
-		quest = await self.repository.get_quest_by_id(quest_id)
-		if quest is None or not quest.is_active:
-			raise NotFoundException("Quest khÃ´ng tá»“n táº¡i")
+        return items, len(items)
 
-		now = datetime.now(timezone.utc)
-		user_quest = await self.repository.get_user_quest(user_id=user_id, quest_id=quest_id)
+    async def get_quest_detail(
+    self,
+    *,
+    user_id: UUID,
+    quest_id: UUID,
+    poi_id: UUID | None = None,
+    ) -> QuestDetailResponse:
+        quest = await self.repository.get_quest_by_id(quest_id)
 
-		if user_quest is not None:
-			if user_quest.normalized_status == UserQuestStatus.STARTED:
-				return StartQuestResponse(
-					user_quest_id=user_quest.id,
-					quest_id=quest.id,
-					status=UserQuestStatus.STARTED,
-					started_at=user_quest.started_at,
-					expires_at=user_quest.expires_at,
-				)
-			if user_quest.normalized_status in {UserQuestStatus.SUBMITTED, UserQuestStatus.APPROVED}:
-				raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c báº¯t Ä‘áº§u trÆ°á»›c Ä‘Ã³")
-			if user_quest.normalized_status == UserQuestStatus.REJECTED:
-				existing_submission = await self.repository.get_submission_by_user_quest_id(user_quest.id)
-				if existing_submission is not None and existing_submission.retry_count < MAX_SUBMISSION_RETRY_COUNT:
-					raise ConflictException("Quest Ä‘ang chá» báº¡n cáº­p nháº­t láº¡i áº£nh")
+        if quest is None or not quest.is_active:
+            raise NotFoundException("Quest không tồn tại")
 
-			user_quest.status = UserQuestStatus.STARTED
-			user_quest.started_at = now
-			user_quest.expires_at = self._compute_expires_at(now=now, time_limit_hours=quest.time_limit_hours)
-			await self.repository.commit()
-			return StartQuestResponse(
-				user_quest_id=user_quest.id,
-				quest_id=quest.id,
-				status=UserQuestStatus.STARTED,
-				started_at=user_quest.started_at,
-				expires_at=user_quest.expires_at,
-			)
+        poi = None
+        poi_name = None
 
-		try:
-			created = await self.repository.create_user_quest(
-				user_id=user_id,
-				quest_id=quest.id,
-				status=UserQuestStatus.STARTED,
-				started_at=now,
-				expires_at=self._compute_expires_at(now=now, time_limit_hours=quest.time_limit_hours),
-			)
-			await self.repository.commit()
-		except IntegrityError as exc:
-			raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c báº¯t Ä‘áº§u trÆ°á»›c Ä‘Ã³") from exc
+        if poi_id is not None:
+            poi = await self.repository.get_poi_by_id(poi_id)
 
-		return StartQuestResponse(
-			user_quest_id=created.id,
-			quest_id=quest.id,
-			status=UserQuestStatus.STARTED,
-			started_at=created.started_at,
-			expires_at=created.expires_at,
-		)
+            if poi is None:
+                raise NotFoundException("Vị trí không tồn tại")
 
-	async def submit_quest(
-		self,
-		*,
-		user_id: UUID,
-		onboarding_completed: bool,
-		quest_id: UUID,
-		payload: SubmitQuestRequest,
-	) -> SubmitQuestResponse:
-		if not onboarding_completed:
-			raise ForbiddenException("Báº¡n cáº§n hoÃ n táº¥t onboarding trÆ°á»›c khi ná»™p quest")
+            poi_name = poi.name
 
-		quest = await self.repository.get_quest_by_id(quest_id)
-		if quest is None or not quest.is_active:
-			raise NotFoundException("Quest khÃ´ng tá»“n táº¡i")
+        user_quest = await self.repository.get_user_quest(
+            user_id=user_id,
+            quest_id=quest_id,
+            poi_id=poi_id,
+        )
 
-		user_quest = await self.repository.get_user_quest_for_update(user_id=user_id, quest_id=quest_id)
-		now = datetime.now(timezone.utc)
-		
-		existing_submission = await self.repository.get_submission_by_user_quest_id(user_quest.id) if user_quest else None
+        detail_poi_id = poi_id
 
-		if user_quest is None:
-			raise BadRequestException("Báº¡n cáº§n báº¯t Ä‘áº§u quest trÆ°á»›c khi ná»™p áº£nh")
-		else:
-			if (
-				existing_submission is not None
-				and existing_submission.status != SubmissionStatus.REJECTED
-				and existing_submission.file_hash == payload.file_hash
-				and user_quest.normalized_status in {UserQuestStatus.SUBMITTED, UserQuestStatus.APPROVED}
-			):
-				return SubmitQuestResponse(
-					submission_id=existing_submission.id,
-					user_quest_id=user_quest.id,
-					status=user_quest.normalized_status,
-					submission_status=existing_submission.status,
-					submitted_at=existing_submission.created_at,
-					retry_count=existing_submission.retry_count,
-					max_retry_count=MAX_SUBMISSION_RETRY_COUNT,
-				)
+        rendered_text = render_quest_text(
+            quest.template,
+            quest.labels,
+            poi_name,
+    )
 
-			# Náº¿u nhiá»‡m vá»¥ Ä‘Ã£ á»Ÿ tráº¡ng thÃ¡i Cuá»‘i (Ä‘Ã£ ná»™p/duyá»‡t), cháº·n khÃ´ng cho ná»™p trÃ¹ng
-			if user_quest.normalized_status in {UserQuestStatus.SUBMITTED, UserQuestStatus.APPROVED}:
-				raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c ná»™p hoáº·c Ä‘Ã£ hoÃ n thÃ nh trÆ°á»›c Ä‘Ã³")
-			
-			# Náº¿u nhiá»‡m vá»¥ Ä‘ang treo hoáº·c bá»‹ reject, tá»± Ä‘á»™ng chuyá»ƒn vá» STARTED Ä‘á»ƒ cho phÃ©p ná»™p Ä‘Ã¨/má»›i
-			if user_quest.normalized_status not in STARTED_STATUSES:
-				if user_quest.normalized_status != UserQuestStatus.REJECTED:
-					raise BadRequestException("Tráº¡ng thÃ¡i quest khÃ´ng há»£p lá»‡ Ä‘á»ƒ ná»™p áº£nh")
+        image_map = await self.repository.get_top_post_images_for_quests(
+            quest_ids=[quest.id],
+            since=datetime.now(timezone.utc) - timedelta(days=7),
+        )
 
-		expires_at = self._to_utc_aware(user_quest.expires_at)
-		if expires_at is not None and expires_at <= now:
-			user_quest.status = UserQuestStatus.REJECTED
-			await self.repository.commit()
-			raise BadRequestException("Quest Ä‘Ã£ háº¿t háº¡n ná»™p")
+        base_xp = quest.xp_reward
 
-		if existing_submission is not None:
-			if existing_submission.status != SubmissionStatus.REJECTED:
-				raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c ná»™p trÆ°á»›c Ä‘Ã³")
-			if existing_submission.retry_count >= MAX_SUBMISSION_RETRY_COUNT:
-				raise ConflictException("Báº¡n Ä‘Ã£ háº¿t sá»‘ láº§n cáº­p nháº­t áº£nh cho quest nÃ y")
+        poi_required = bool(
+            detail_poi_id is not None
+            or quest.location_required
+        )
 
-			submission = await self.repository.update_rejected_submission_for_retry(
-				existing_submission,
-				image_url=payload.image_url,
-				cloudinary_public_id=payload.cloudinary_public_id,
-				file_hash=payload.file_hash,
-				lat=payload.lat,
-				lng=payload.lng,
-				location_accuracy_m=payload.location_accuracy_m,
-				location_captured_at=payload.location_captured_at,
-			)
-			user_quest.status = UserQuestStatus.SUBMITTED
-			await self.repository.commit()
+        poi_bonus_xp = (
+            round(base_xp * 0.5)
+            if poi_required
+            else 0
+        )
 
-			try:
-				enqueue_submission_approval(submission.id)
-			except Exception:
-				logger.exception("Failed to enqueue AI approval for submission %s", submission.id)
+        total_xp_with_poi = base_xp + poi_bonus_xp
 
-			return SubmitQuestResponse(
-				submission_id=submission.id,
-				user_quest_id=user_quest.id,
-				status=UserQuestStatus.SUBMITTED,
-				submission_status=SubmissionStatus.PENDING,
-				submitted_at=submission.created_at,
-				retry_count=submission.retry_count,
-				max_retry_count=MAX_SUBMISSION_RETRY_COUNT,
-			)
+        return QuestDetailResponse(
+            id=quest.id,
 
-		try:
-			submission = await self.repository.create_submission(
-				user_quest_id=user_quest.id,
-				image_url=payload.image_url,
-				cloudinary_public_id=payload.cloudinary_public_id,
-				file_hash=payload.file_hash,
-				lat=payload.lat,
-				lng=payload.lng,
-				location_accuracy_m=payload.location_accuracy_m,
-				location_captured_at=payload.location_captured_at,
-			)
-			user_quest.status = UserQuestStatus.SUBMITTED
-			await self.repository.commit()
-		except IntegrityError as exc:
-			raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c ná»™p trÆ°á»›c Ä‘Ã³") from exc
+            poi_id=detail_poi_id,
+            poi_name=poi_name,
+            image_url=image_map.get(quest.id),
 
-		try:
-			enqueue_submission_approval(submission.id)
-		except Exception:
-			logger.exception("Failed to enqueue AI approval for submission %s", submission.id)
+            rendered_text=rendered_text,
+            description=quest.description,
 
-		return SubmitQuestResponse(
-			submission_id=submission.id,
-			user_quest_id=user_quest.id,
-			status=UserQuestStatus.SUBMITTED,
-			submission_status=SubmissionStatus.PENDING,
-			submitted_at=submission.created_at,
-			retry_count=submission.retry_count,
-			max_retry_count=MAX_SUBMISSION_RETRY_COUNT,
-		)
+            labels=quest.labels or [],
+            min_confidence=float(quest.min_confidence or 0.5),
 
-	@staticmethod
-	def _compute_expires_at(*, now: datetime, time_limit_hours: int | None) -> datetime | None:
-		if time_limit_hours is None:
-			return None
-		return now + timedelta(hours=time_limit_hours)
+            xp_reward=base_xp,
+            base_xp=base_xp,
+            poi_bonus_xp=poi_bonus_xp,
+            total_xp_with_poi=total_xp_with_poi,
 
-	@staticmethod
-	def _to_utc_aware(value: datetime | None) -> datetime | None:
-		"""Normalize DB datetime values to UTC-aware for safe comparisons."""
-		if value is None:
-			return None
-		if value.tzinfo is None:
-			return value.replace(tzinfo=timezone.utc)
-		return value
+            poi_required=poi_required,
+            is_active=quest.is_active,
 
-	async def recommend_from_image(
-		self,
-		*,
-		user_id: UUID,
-		image_url: str,
-		lat: float | None = None,
-		lng: float | None = None,
-	) -> list[QuestListItemResponse]:
-		"""Uses Google Vision to detect what's in the image and recommends quests matching it."""
-		try:
-			vision_service = VisionService()
-			result = vision_service.detect_labels_from_url(image_url)
-			detected_labels = {label.description.lower() for label in result.labels}
-		except Exception:
-			logger.warning("AI label detection failed for recommendations. Defaulting to zero filter.")
-			detected_labels = set()
+            user_status=(
+                user_quest.normalized_status
+                if user_quest
+                else UserQuestStatus.NOT_STARTED
+            ),
 
-		if not detected_labels:
-			return []
+            started_at=(
+                user_quest.started_at
+                if user_quest
+                else None
+            ),
 
-		# Fetch reasonable number of active candidates to check (e.g. top 200 recent)
-		quests, _ = await self.repository.list_active_quests(offset=0, limit=200)
-		matched_items: list[QuestListItemResponse] = []
+            expires_at=(
+                user_quest.expires_at
+                if user_quest
+                else None
+            ),
+        )
 
-		for quest in quests:
+    async def start_quest(
+        self,
+        *,
+        user_id: UUID,
+        onboarding_completed: bool,
+        quest_id: UUID,
+        poi_id: UUID | None = None,
+    ) -> StartQuestResponse:
+        if not onboarding_completed:
+            raise ForbiddenException("Báº¡n cáº§n hoÃ n táº¥t onboarding trÆ°á»›c khi báº¯t Ä‘áº§u quest")
+
+        quest = await self.repository.get_quest_by_id(quest_id)
+        if quest is None or not quest.is_active:
+            raise NotFoundException("Quest khÃ´ng tá»“n táº¡i")
+
+        now = datetime.now(timezone.utc)
+        user_quest = await self.repository.get_user_quest(user_id=user_id, quest_id=quest_id, poi_id=poi_id)
+
+        if user_quest is not None:
+            if user_quest.normalized_status == UserQuestStatus.STARTED:
+                return StartQuestResponse(
+                    user_quest_id=user_quest.id,
+                    quest_id=quest.id,
+                    poi_id=user_quest.poi_id,
+                    status=UserQuestStatus.STARTED,
+                    started_at=user_quest.started_at,
+                    expires_at=user_quest.expires_at,
+                )
+            if user_quest.normalized_status in {UserQuestStatus.SUBMITTED, UserQuestStatus.APPROVED}:
+                raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c báº¯t Ä‘áº§u trÆ°á»›c Ä‘Ã³")
+            if user_quest.normalized_status == UserQuestStatus.REJECTED:
+                existing_submission = await self.repository.get_submission_by_user_quest_id(user_quest.id)
+                if existing_submission is not None and existing_submission.retry_count < MAX_SUBMISSION_RETRY_COUNT:
+                    raise ConflictException("Quest Ä‘ang chá» báº¡n cáº­p nháº­t láº¡i áº£nh")
+
+            user_quest.status = UserQuestStatus.STARTED
+            user_quest.started_at = now
+            user_quest.expires_at = self._compute_expires_at(now=now, time_limit_hours=quest.time_limit_hours)
+            if poi_id is not None:
+                await self.repository.create_quest_instance_mapping(
+                    user_id=user_id,
+                    quest_id=quest.id,
+                    poi_id=poi_id,
+                )
+            await self.repository.commit()
+            return StartQuestResponse(
+                user_quest_id=user_quest.id,
+                quest_id=quest.id,
+                poi_id=user_quest.poi_id,
+                status=UserQuestStatus.STARTED,
+                started_at=user_quest.started_at,
+                expires_at=user_quest.expires_at,
+            )
+
+        try:
+            created = await self.repository.create_user_quest(
+                user_id=user_id,
+                quest_id=quest.id,
+                poi_id=poi_id,
+                status=UserQuestStatus.STARTED,
+                started_at=now,
+                expires_at=self._compute_expires_at(now=now, time_limit_hours=quest.time_limit_hours),
+            )
+            if poi_id is not None:
+                await self.repository.create_quest_instance_mapping(
+                    user_id=user_id,
+                    quest_id=quest.id,
+                    poi_id=poi_id,
+                )
+            await self.repository.commit()
+        except IntegrityError as exc:
+            raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c báº¯t Ä‘áº§u trÆ°á»›c Ä‘Ã³") from exc
+
+        return StartQuestResponse(
+            user_quest_id=created.id,
+            quest_id=quest.id,
+            poi_id=created.poi_id,
+            status=UserQuestStatus.STARTED,
+            started_at=created.started_at,
+            expires_at=created.expires_at,
+        )
+
+    async def submit_quest(
+        self,
+        *,
+        user_id: UUID,
+        onboarding_completed: bool,
+        quest_id: UUID,
+        payload: SubmitQuestRequest,
+    ) -> SubmitQuestResponse:
+        if not onboarding_completed:
+            raise ForbiddenException("Báº¡n cáº§n hoÃ n táº¥t onboarding trÆ°á»›c khi ná»™p quest")
+
+        quest = await self.repository.get_quest_by_id(quest_id)
+        if quest is None or not quest.is_active:
+            raise NotFoundException("Quest khÃ´ng tá»“n táº¡i")
+        if payload.poi_id is not None:
+            poi = await self.repository.get_poi_by_id(payload.poi_id)
+            if poi is None:
+                raise NotFoundException("Vá»‹ trÃ­ khÃ´ng tá»“n táº¡i")
+
+        user_quest = await self.repository.get_user_quest_for_update(
+            user_id=user_id,
+            quest_id=quest_id,
+            poi_id=payload.poi_id,
+        )
+        now = datetime.now(timezone.utc)
+        
+        existing_submission = await self.repository.get_submission_by_user_quest_id(user_quest.id) if user_quest else None
+
+        if user_quest is None:
+            raise BadRequestException("Báº¡n cáº§n báº¯t Ä‘áº§u quest trÆ°á»›c khi ná»™p áº£nh")
+        else:
+            if (
+                existing_submission is not None
+                and existing_submission.status != SubmissionStatus.REJECTED
+                and existing_submission.file_hash == payload.file_hash
+                and user_quest.normalized_status in {UserQuestStatus.SUBMITTED, UserQuestStatus.APPROVED}
+            ):
+                return SubmitQuestResponse(
+                    submission_id=existing_submission.id,
+                    post_id=None,
+                    user_quest_id=user_quest.id,
+                    poi_id=user_quest.poi_id,
+                    status=user_quest.normalized_status,
+                    submission_status=existing_submission.status,
+                    submitted_at=existing_submission.created_at,
+                    retry_count=existing_submission.retry_count,
+                    max_retry_count=MAX_SUBMISSION_RETRY_COUNT,
+                )
+
+            # Náº¿u nhiá»‡m vá»¥ Ä‘Ã£ á»Ÿ tráº¡ng thÃ¡i Cuá»‘i (Ä‘Ã£ ná»™p/duyá»‡t), cháº·n khÃ´ng cho ná»™p trÃ¹ng
+            if user_quest.normalized_status in {UserQuestStatus.SUBMITTED, UserQuestStatus.APPROVED}:
+                raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c ná»™p hoáº·c Ä‘Ã£ hoÃ n thÃ nh trÆ°á»›c Ä‘Ã³")
+            
+            # Náº¿u nhiá»‡m vá»¥ Ä‘ang treo hoáº·c bá»‹ reject, tá»± Ä‘á»™ng chuyá»ƒn vá» STARTED Ä‘á»ƒ cho phÃ©p ná»™p Ä‘Ã¨/má»›i
+            if user_quest.normalized_status not in STARTED_STATUSES:
+                if user_quest.normalized_status != UserQuestStatus.REJECTED:
+                    raise BadRequestException("Tráº¡ng thÃ¡i quest khÃ´ng há»£p lá»‡ Ä‘á»ƒ ná»™p áº£nh")
+
+        expires_at = self._to_utc_aware(user_quest.expires_at)
+        if expires_at is not None and expires_at <= now:
+            user_quest.status = UserQuestStatus.REJECTED
+            await self.repository.commit()
+            raise BadRequestException("Quest Ä‘Ã£ háº¿t háº¡n ná»™p")
+
+        if existing_submission is not None:
+            if existing_submission.status != SubmissionStatus.REJECTED:
+                raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c ná»™p trÆ°á»›c Ä‘Ã³")
+            if existing_submission.retry_count >= MAX_SUBMISSION_RETRY_COUNT:
+                raise ConflictException("Báº¡n Ä‘Ã£ háº¿t sá»‘ láº§n cáº­p nháº­t áº£nh cho quest nÃ y")
+
+            submission = await self.repository.update_rejected_submission_for_retry(
+                existing_submission,
+                image_url=payload.image_url,
+                cloudinary_public_id=payload.cloudinary_public_id,
+                file_hash=payload.file_hash,
+                lat=payload.lat,
+                lng=payload.lng,
+                location_accuracy_m=payload.location_accuracy_m,
+                location_captured_at=payload.location_captured_at,
+            )
+            existing_post = await self.repository.get_post_by_submission_for_update(
+                user_id=user_id,
+                submission_id=submission.id,
+            )
+            incoming_post = None
+            linked_post_id = existing_post.id if existing_post is not None else None
+            if payload.post_id is not None:
+                incoming_post = await self.repository.get_post_for_update(user_id=user_id, post_id=payload.post_id)
+                if incoming_post is None:
+                    raise NotFoundException("Post khÃƒÂ´ng tÃ¡Â»â€œn tÃ¡ÂºÂ¡i hoÃ¡ÂºÂ·c khÃƒÂ´ng thuÃ¡Â»â„¢c vÃ¡Â»Â bÃ¡ÂºÂ¡n")
+                if incoming_post.submission_id is not None and incoming_post.submission_id != submission.id:
+                    raise ConflictException("Post Ã„â€˜ÃƒÂ£ gÃ¡ÂºÂ¯n vÃ¡Â»â€ºi submission khÃƒÂ¡c")
+                if incoming_post.quest_id is not None and incoming_post.quest_id != quest.id:
+                    raise BadRequestException("Post khÃƒÂ´ng khÃ¡Â»â€ºp vÃ¡Â»â€ºi quest Ã„â€˜ang nÃ¡Â»â„¢p")
+
+            if existing_post is not None:
+                source_post = incoming_post if incoming_post is not None and incoming_post.id != existing_post.id else None
+                if source_post is not None:
+                    existing_post.caption = source_post.caption
+                    existing_post.location_name = source_post.location_name
+                    existing_post.poi_id = source_post.poi_id or user_quest.poi_id
+                elif existing_post.poi_id is None:
+                    existing_post.poi_id = user_quest.poi_id
+                existing_post.image_url = payload.image_url
+                existing_post.quest_id = quest.id
+                linked_post_id = existing_post.id
+                if source_post is not None:
+                    await self.repository.delete_post(source_post)
+            elif incoming_post is not None:
+                incoming_post.submission_id = submission.id
+                incoming_post.quest_id = quest.id
+                incoming_post.image_url = payload.image_url
+                if incoming_post.poi_id is None:
+                    incoming_post.poi_id = user_quest.poi_id
+                linked_post_id = incoming_post.id
+            user_quest.status = UserQuestStatus.SUBMITTED
+            await self.repository.commit()
+
+            try:
+                enqueue_submission_approval(submission.id)
+            except Exception:
+                logger.exception("Failed to enqueue AI approval for submission %s", submission.id)
+
+            return SubmitQuestResponse(
+                submission_id=submission.id,
+                post_id=linked_post_id,
+                user_quest_id=user_quest.id,
+                poi_id=user_quest.poi_id,
+                status=UserQuestStatus.SUBMITTED,
+                submission_status=SubmissionStatus.PENDING,
+                submitted_at=submission.created_at,
+                retry_count=submission.retry_count,
+                max_retry_count=MAX_SUBMISSION_RETRY_COUNT,
+            )
+
+        try:
+            submission = await self.repository.create_submission(
+                user_quest_id=user_quest.id,
+                image_url=payload.image_url,
+                cloudinary_public_id=payload.cloudinary_public_id,
+                file_hash=payload.file_hash,
+                lat=payload.lat,
+                lng=payload.lng,
+                location_accuracy_m=payload.location_accuracy_m,
+                location_captured_at=payload.location_captured_at,
+            )
+            if payload.post_id is not None:
+                post = await self.repository.get_post_for_update(user_id=user_id, post_id=payload.post_id)
+                if post is None:
+                    raise NotFoundException("Post khÃ´ng tá»“n táº¡i hoáº·c khÃ´ng thuá»™c vá» báº¡n")
+                if post.submission_id is not None and post.submission_id != submission.id:
+                    raise ConflictException("Post Ä‘Ã£ gáº¯n vá»›i submission khÃ¡c")
+                if post.quest_id is not None and post.quest_id != quest.id:
+                    raise BadRequestException("Post khÃ´ng khá»›p vá»›i quest Ä‘ang ná»™p")
+                post.submission_id = submission.id
+                post.quest_id = quest.id
+                if post.poi_id is None:
+                    post.poi_id = user_quest.poi_id
+                linked_post_id = post.id
+            else:
+                linked_post_id = None
+            user_quest.status = UserQuestStatus.SUBMITTED
+            await self.repository.commit()
+        except IntegrityError as exc:
+            raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c ná»™p trÆ°á»›c Ä‘Ã³") from exc
+
+        try:
+            enqueue_submission_approval(submission.id)
+        except Exception:
+            logger.exception("Failed to enqueue AI approval for submission %s", submission.id)
+
+        return SubmitQuestResponse(
+            submission_id=submission.id,
+            post_id=linked_post_id,
+            user_quest_id=user_quest.id,
+            poi_id=user_quest.poi_id,
+            status=UserQuestStatus.SUBMITTED,
+            submission_status=SubmissionStatus.PENDING,
+            submitted_at=submission.created_at,
+            retry_count=submission.retry_count,
+            max_retry_count=MAX_SUBMISSION_RETRY_COUNT,
+        )
+
+    @staticmethod
+    def _compute_expires_at(*, now: datetime, time_limit_hours: int | None) -> datetime | None:
+        if time_limit_hours is None:
+            return None
+        return now + timedelta(hours=time_limit_hours)
+
+    @staticmethod
+    def _to_utc_aware(value: datetime | None) -> datetime | None:
+        """Normalize DB datetime values to UTC-aware for safe comparisons."""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
+    async def recommend_from_image(
+        self,
+        *,
+        user_id: UUID,
+        image_url: str,
+        lat: float | None = None,
+        lng: float | None = None,
+    ) -> list[QuestListItemResponse]:
+        """Uses Google Vision to detect what's in the image and recommends quests matching it."""
+        try:
+            vision_service = VisionService()
+            result = vision_service.detect_labels_from_url(image_url)
+            detected_labels = {label.description.lower() for label in result.labels}
+        except Exception:
+            logger.warning("AI label detection failed for recommendations. Defaulting to zero filter.")
+            detected_labels = set()
+
+        if not detected_labels:
+            return []
+
+        # Fetch reasonable number of active candidates to check (e.g. top 200 recent)
+        quests, _ = await self.repository.list_active_quests(offset=0, limit=200)
+        matched_items: list[QuestListItemResponse] = []
+
+        for quest in quests:
 
 
-			# Combine labels from list and key mapping logic exactly like runtime evaluator
-			quest_targets = set(quest.labels or [])
-			if quest.label_rules:
-				quest_targets.update(quest.label_rules.keys())
-			
-			quest_targets_lower = {t.lower() for t in quest_targets}
-			
-			# Check if ANY label intersects with detected image labels
-			if any(l in detected_labels for l in quest_targets_lower):
-				user_quest = await self.repository.get_user_quest(user_id=user_id, quest_id=quest.id)
-				# Loáº¡i trá»« cÃ¡c nhiá»‡m vá»¥ Ä‘Ã£ lÃ m rá»“i theo yÃªu cáº§u cá»§a ngÆ°á»i dÃ¹ng
-				if user_quest and user_quest.normalized_status in {UserQuestStatus.APPROVED, UserQuestStatus.SUBMITTED}:
-					continue
-				
-				matched_items.append(
+            # Combine labels from list and key mapping logic exactly like runtime evaluator
+            quest_targets = set(quest.labels or [])
+            if quest.label_rules:
+                quest_targets.update(quest.label_rules.keys())
+            
+            quest_targets_lower = {t.lower() for t in quest_targets}
+            
+            # Check if ANY label intersects with detected image labels
+            if any(l in detected_labels for l in quest_targets_lower):
+                user_quest = await self.repository.get_user_quest(user_id=user_id, quest_id=quest.id)
+                # Loáº¡i trá»« cÃ¡c nhiá»‡m vá»¥ Ä‘Ã£ lÃ m rá»“i theo yÃªu cáº§u cá»§a ngÆ°á»i dÃ¹ng
+                if user_quest and user_quest.normalized_status in {UserQuestStatus.APPROVED, UserQuestStatus.SUBMITTED}:
+                    continue
+                
+                matched_items.append(
 
 
-					QuestListItemResponse(
-						id=quest.id,
-						rendered_text=render_quest_text(quest.template, quest.labels, None),
-						labels=quest.labels or [],
-						min_confidence=float(quest.min_confidence or 0.5),
-						poi_required=quest.poi_required,
-						xp_reward=quest.xp_reward,
-						is_active=quest.is_active,
-						user_status=user_quest.normalized_status if user_quest else UserQuestStatus.NOT_STARTED,
-					)
-				)
-		
-		return matched_items
+                    QuestListItemResponse(
+                        id=quest.id,
+                        poi_id=None,
+                        rendered_text=render_quest_text(quest.template, quest.labels, None),
+                        labels=quest.labels or [],
+                        min_confidence=float(quest.min_confidence or 0.5),
+                        xp_reward=quest.xp_reward,
+                        is_active=quest.is_active,
+                        user_status=user_quest.normalized_status if user_quest else UserQuestStatus.NOT_STARTED,
+                    )
+                )
+        
+        return matched_items
 

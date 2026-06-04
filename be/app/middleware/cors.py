@@ -17,7 +17,11 @@ def setup_cors(app) -> None:
         origins = [
             "http://localhost:8000",
             "http://localhost:3000",
+            "http://localhost:5173",   # Vite admin web
+            "http://localhost:5174",   # Vite admin web (fallback port)
             "http://localhost:19006",   # Expo web
+            "http://10.196.131.225:8000",
+            "http://10.196.131.225:8001",
             "http://192.168.100.211:8000",
             "http://192.168.100.211:19006",
             "exp://192.168.100.211:8081",

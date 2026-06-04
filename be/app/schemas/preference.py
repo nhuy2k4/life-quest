@@ -5,6 +5,7 @@ class PreferenceRequest(BaseModel):
 	"""POST /users/me/preferences payload."""
 
 	interests: list[int] = Field(default_factory=list)
+	interest_weights: dict | None = Field(default=None, exclude=True)
 	activity_level: str
 	location_enabled: bool = True
 

@@ -26,6 +26,7 @@ from app.core.database import Base
 from app.deps.db import get_db
 from app.main import app
 from app.models.quest import Quest
+from app.models.recommendation import RecommendationLog
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.user_quest import UserQuest
@@ -150,6 +151,14 @@ async def test_follow_and_feed(client: AsyncClient):
     )
     assert response.status_code == 200
 
+    profile = await client.get(
+        f"/api/v1/users/{user2.id}",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert profile.status_code == 200
+    assert profile.json()["data"]["is_following"] is True
+    assert profile.json()["data"]["stats"]["followers"] == 1
+
     feed = await client.get(
         "/api/v1/social/feed",
         headers={"Authorization": f"Bearer {access_token}"},
@@ -171,6 +180,7 @@ async def test_post_like_comment_flow(client: AsyncClient):
         user = result.scalar_one()
 
     submission = await _create_submission(user.id)
+    expected_quest_id = submission.user_quest_id
 
     post = await client.post(
         "/api/v1/social/posts",
@@ -199,6 +209,25 @@ async def test_post_like_comment_flow(client: AsyncClient):
     )
     assert comments.status_code == 200
     assert comments.json()["total"] == 1
+
+    async with app.state.test_sessionmaker() as session:
+        log_rows = await session.execute(
+            select(
+                RecommendationLog.event,
+                RecommendationLog.post_id,
+                RecommendationLog.quest_id,
+                RecommendationLog.score,
+            )
+            .where(RecommendationLog.post_id == uuid.UUID(post_id))
+            .order_by(RecommendationLog.created_at.asc())
+        )
+        logs = log_rows.all()
+        assert [event for event, *_ in logs] == ["post_liked", "post_commented"]
+        assert all(log_post_id == uuid.UUID(post_id) for _, log_post_id, *_ in logs)
+        quest_rows = await session.execute(select(UserQuest.quest_id).where(UserQuest.id == expected_quest_id))
+        expected_quest_id = quest_rows.scalar_one()
+        assert all(log_quest_id == expected_quest_id for _, _, log_quest_id, *_ in logs)
+        assert [score for *_, score in logs] == [1.0, 3.0]
 
 
 @pytest.mark.asyncio

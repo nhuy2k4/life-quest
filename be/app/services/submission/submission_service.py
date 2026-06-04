@@ -2,6 +2,8 @@ import uuid
 
 from app.core.exceptions import ConflictException, NotFoundException, ForbiddenException
 from app.models.enums import SubmissionStatus, UserQuestStatus
+from app.models.recommendation import RecommendationLog
+from app.models.social import Post
 from app.repositories.submission_repository import SubmissionRepository
 from app.schemas.submission import (
 	AdminSubmissionActionResponse,
@@ -89,6 +91,17 @@ class SubmissionService:
 				"xp_granted": xp_granted,
 			},
 		)
+		self.repository.db.add(
+			RecommendationLog(
+				user_id=submission.user_quest.user_id,
+				quest_id=submission.user_quest.quest_id,
+				event="completed",
+				score=6.0,
+				rank=0,
+				request_id=uuid.uuid4(),
+				algorithm_version="rule_based_mvp_v1",
+			)
+		)
 
 		await self.repository.commit()
 		return AdminSubmissionActionResponse(
@@ -109,6 +122,11 @@ class SubmissionService:
 		submission.status = SubmissionStatus.REJECTED
 		submission.rejection_reason = reason.strip()
 		submission.user_quest.status = UserQuestStatus.REJECTED
+		await self.repository.db.execute(
+			Post.__table__.update()
+			.where(Post.submission_id == submission.id)
+			.values(event_id=None)
+		)
 		await NotificationService(self.repository.db).create_notification(
 			user_id=submission.user_quest.user_id,
 			notification_type="quest_rejected",

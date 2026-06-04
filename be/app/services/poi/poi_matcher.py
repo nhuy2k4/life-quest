@@ -41,7 +41,13 @@ def _cache_key(lat: float, lng: float) -> str:
     return f"poi:suggest:{round(lat, settings.POI_CACHE_ROUNDING)}:{round(lng, settings.POI_CACHE_ROUNDING)}"
 
 
-async def match_poi(*, db: AsyncSession, lat: float, lng: float) -> PoiMatch | None:
+async def match_poi(
+    *,
+    db: AsyncSession,
+    lat: float,
+    lng: float,
+    accuracy_m: float | None = None,
+) -> PoiMatch | None:
     cache_key = _cache_key(lat, lng)
     cached = await redis_get(cache_key)
     repository = PoiRepository(db)
@@ -62,7 +68,10 @@ async def match_poi(*, db: AsyncSession, lat: float, lng: float) -> PoiMatch | N
         except (ValueError, TypeError):
             pass
 
-    lat_min, lat_max, lng_min, lng_max = _bbox(lat, lng, settings.POI_MAX_RADIUS_M)
+    accuracy_buffer_m = min(max(float(accuracy_m or 0), 0.0), settings.POI_MAX_RADIUS_M)
+    max_poi_radius_m = await repository.get_max_active_radius_m()
+    search_radius_m = max(settings.POI_MAX_RADIUS_M, float(max_poi_radius_m or 0) + accuracy_buffer_m)
+    lat_min, lat_max, lng_min, lng_max = _bbox(lat, lng, search_radius_m)
     candidates = await repository.list_active_in_bbox(
         lat_min=lat_min,
         lat_max=lat_max,
@@ -73,7 +82,7 @@ async def match_poi(*, db: AsyncSession, lat: float, lng: float) -> PoiMatch | N
     best: PoiMatch | None = None
     for poi in candidates:
         distance_m = _haversine_m(lat, lng, poi.latitude, poi.longitude)
-        if distance_m <= poi.radius_m:
+        if distance_m <= float(poi.radius_m or 0) + accuracy_buffer_m:
             if best is None or distance_m < best.distance_m:
                 best = PoiMatch(poi=poi, distance_m=distance_m)
 

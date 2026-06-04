@@ -5,6 +5,7 @@ Chạy: pytest tests/test_admin.py -v
 """
 import os
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ from app.core.config import settings
 from app.core.database import Base
 from app.deps.db import get_db
 from app.main import app
+from app.models.badge import Badge
 from app.models.enums import UserRole
 from app.models.quest import Quest
 from app.models.user import User
@@ -154,3 +156,59 @@ async def test_admin_list_quests(client: AsyncClient):
     )
     assert response.status_code == 200
     assert response.json()["total"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_admin_badge_crud(client: AsyncClient):
+    await _register_user(client, username="badgeadmin", email="badgeadmin@example.com", password="SecurePass1")
+    await _verify_and_promote("badgeadmin@example.com", UserRole.ADMIN)
+
+    tokens = await _login(client, username="badgeadmin", password="SecurePass1")
+    access_token = tokens["access_token"]
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    condition_types = await client.get("/api/v1/admin/badges/condition-types", headers=headers)
+    assert condition_types.status_code == 200
+    assert any(item["value"] == "quests_completed" for item in condition_types.json()["items"])
+
+    create_response = await client.post(
+        "/api/v1/admin/badges",
+        json={
+            "name": "First Finisher",
+            "description": "Complete the first quest.",
+            "icon_url": "trophy",
+            "rarity": "common",
+            "category": "quests",
+            "condition_type": "quests_completed",
+            "target": 1,
+            "is_hidden": False,
+            "is_active": True,
+            "sort_order": 10,
+        },
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    badge = create_response.json()
+    assert badge["criteria"] == {"type": "quests_completed", "target": 1}
+
+    update_response = await client.patch(
+        f"/api/v1/admin/badges/{badge['id']}",
+        json={"rarity": "rare", "target": 3, "is_active": False},
+        headers=headers,
+    )
+    assert update_response.status_code == 200
+    updated = update_response.json()
+    assert updated["rarity"] == "rare"
+    assert updated["criteria"]["target"] == 3
+    assert updated["is_active"] is False
+
+    list_response = await client.get("/api/v1/admin/badges", headers=headers)
+    assert list_response.status_code == 200
+    assert list_response.json()["total"] == 1
+
+    delete_response = await client.delete(f"/api/v1/admin/badges/{badge['id']}", headers=headers)
+    assert delete_response.status_code == 200
+
+    async with app.state.test_sessionmaker() as session:
+        result = await session.execute(select(Badge).where(Badge.id == uuid.UUID(badge["id"])))
+        assert result.scalar_one_or_none() is None

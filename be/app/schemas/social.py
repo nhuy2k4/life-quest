@@ -9,9 +9,18 @@ from app.schemas.user import UserPublicResponse
 
 class PostQuestInfo(BaseModel):
 	id: uuid.UUID
+	poi_id: uuid.UUID | None = None
 	title: str
 	description: str | None = None
 	xp_reward: int
+	poi_name: str | None = None
+
+	model_config = {"from_attributes": True}
+
+
+class PostEventInfo(BaseModel):
+	id: uuid.UUID
+	title: str
 
 	model_config = {"from_attributes": True}
 
@@ -19,9 +28,10 @@ class PostQuestInfo(BaseModel):
 class PostCreateRequest(BaseModel):
 	submission_id: uuid.UUID | None = None
 	quest_id: uuid.UUID | None = None
+	poi_id: uuid.UUID | None = None
 	image_url: str | None = None
 	caption: str | None = None
-
+	location_name: str | None = None
 
 
 class PostResponse(BaseModel):
@@ -29,11 +39,14 @@ class PostResponse(BaseModel):
 	submission_id: uuid.UUID | None
 	submission_image_url: str | None = None
 	caption: str | None = None
+	location_name: str | None = None
 	quest: PostQuestInfo | None = None
+	event: PostEventInfo | None = None
 	user: UserPublicResponse
 	like_count: int
 	comment_count: int
 	liked_by_me: bool = False
+	followed_by_me: bool = False
 	created_at: datetime
 
 	model_config = {"from_attributes": True}

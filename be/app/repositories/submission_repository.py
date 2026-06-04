@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from app.models.enums import XpSource
 from app.models.quest import Quest
 from app.models.submission import Submission
+from app.models.auth import Level
 from app.models.user import User
 from app.models.user_quest import UserQuest
 from app.models.xp_transaction import XpTransaction
@@ -67,8 +68,17 @@ class SubmissionRepository:
     async def get_user_by_id(self, user_id: uuid.UUID) -> User | None:
         return await self.db.scalar(select(User).where(User.id == user_id))
 
-    async def get_xp_transaction_by_submission_id(self, submission_id: uuid.UUID) -> XpTransaction | None:
-        stmt = select(XpTransaction).where(XpTransaction.submission_id == submission_id)
+    async def get_level_for_xp(self, total_xp: int) -> Level | None:
+        stmt = (
+            select(Level)
+            .where(Level.required_xp <= total_xp)
+            .order_by(Level.required_xp.desc())
+            .limit(1)
+        )
+        return await self.db.scalar(stmt)
+
+    async def get_xp_transaction_by_submission_id(self, submission_id: uuid.UUID, source: XpSource = XpSource.QUEST_APPROVED) -> XpTransaction | None:
+        stmt = select(XpTransaction).where(XpTransaction.submission_id == submission_id, XpTransaction.source == source)
         return await self.db.scalar(stmt)
 
     async def create_xp_transaction(

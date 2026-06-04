@@ -29,10 +29,22 @@ def get_social_service(db: AsyncSession = Depends(get_db)) -> SocialService:
 async def get_feed(
 	page: int = Query(default=1, ge=1),
 	page_size: int = Query(default=20, ge=1, le=100),
+	scope: str = Query(default="all", pattern="^(all|following)$"),
 	current_user: CurrentUser = Depends(get_current_user),
 	service: SocialService = Depends(get_social_service),
 ) -> FeedResponse:
-	return await service.get_feed(user_id=current_user.id, page=page, page_size=page_size)
+	return await service.get_feed(user_id=current_user.id, page=page, page_size=page_size, scope=scope)
+
+
+@router.get("/search", response_model=FeedResponse)
+async def search_posts(
+	q: str = Query(min_length=1, max_length=80),
+	page: int = Query(default=1, ge=1),
+	page_size: int = Query(default=20, ge=1, le=100),
+	current_user: CurrentUser = Depends(get_current_user),
+	service: SocialService = Depends(get_social_service),
+) -> FeedResponse:
+	return await service.search_posts(user_id=current_user.id, query=q, page=page, page_size=page_size)
 
 
 @router.post("/posts", response_model=PostResponse)

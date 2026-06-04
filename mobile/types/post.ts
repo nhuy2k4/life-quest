@@ -14,15 +14,24 @@ export interface Post {
   questId?: string;
   quest?: {
     id: string;
+    poi_id?: string | null;
     title: string;
     description?: string;
     xp_reward: number;
+    poi_name?: string | null;
+  };
+  event?: {
+    id: string;
+    title: string;
   };
   createdAt: string;
   likesCount: number;
   commentsCount: number;
   isLiked?: boolean;
   isSaved?: boolean;
+  followedByMe?: boolean;
+  recommendationReasons?: string[];
+  recommendationScore?: number;
 }
 
 export interface Comment {

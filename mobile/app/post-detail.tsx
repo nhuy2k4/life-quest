@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -22,6 +22,16 @@ export default function PostDetailScreen() {
   const [saved, setSaved] = useState(false);
   const [commentOpen, setCommentOpen] = useState(false);
   const [likeCount, setLikeCount] = useState(matched?.likesCount ?? 0);
+  const [commentCount, setCommentCount] = useState(matched?.commentsCount ?? 0);
+
+  useEffect(() => {
+    setLiked(Boolean(matched?.isLiked));
+    setLikeCount(matched?.likesCount ?? 0);
+  }, [matched?.isLiked, matched?.likesCount]);
+
+  useEffect(() => {
+    setCommentCount(matched?.commentsCount ?? 0);
+  }, [matched?.commentsCount]);
 
   if (!matched) {
     return (
@@ -42,14 +52,16 @@ export default function PostDetailScreen() {
 
   const display = {
     id: matched.id,
+    authorId: matched.author.id,
     username: matched.author.username,
     image: matched.imageUrl,
     caption: matched.caption ?? '',
     location: matched.location,
-    likes: matched.likesCount,
-    comments: matched.commentsCount,
+    likes: likeCount,
+    comments: commentCount,
     timeAgo: matched.createdAt,
     quest: matched.quest,
+    event: matched.event,
   };
 
   const handleLike = async () => {
@@ -95,7 +107,19 @@ export default function PostDetailScreen() {
     }
   };
 
-
+  const updateCommentCount = (count: number) => {
+    setCommentCount(count);
+    setPosts((prev) =>
+      prev.map((item) =>
+        item.id === display.id
+          ? {
+              ...item,
+              commentsCount: count,
+            }
+          : item
+      )
+    );
+  };
 
   return (
     <>
@@ -114,7 +138,7 @@ export default function PostDetailScreen() {
           <View style={styles.userRow}>
             <Pressable
               style={styles.userInfo}
-              onPress={() => router.push(`/other-profile/${display.username}`)}>
+              onPress={() => router.push(ROUTES.otherProfile(display.authorId) as Href)}>
               <Avatar size={40} label={display.username.charAt(0)} />
               <View>
                 <Text style={styles.username}>{display.username}</Text>
@@ -134,6 +158,20 @@ export default function PostDetailScreen() {
                 <Ionicons name="flash" size={12} color="#fff" />
                 <Text style={styles.questRibbonText}>Quest</Text>
               </View>
+            ) : null}
+            {display.event ? (
+              <Pressable
+                style={styles.eventRibbon}
+                onPress={() =>
+                  router.push({
+                    pathname: ROUTES.modal.eventDetail as any,
+                    params: { eventId: display.event!.id },
+                  })
+                }
+              >
+                <Ionicons name="trophy-outline" size={12} color="#fff" />
+                <Text style={styles.questRibbonText}>{display.event.title}</Text>
+              </Pressable>
             ) : null}
           </View>
 
@@ -164,7 +202,16 @@ export default function PostDetailScreen() {
             <View style={styles.questCard}>
               <Pressable
                 style={styles.questHead}
-                onPress={() => router.push({ pathname: ROUTES.modal.questDetail as any, params: { questId: display.quest!.id } })}
+                onPress={() =>
+                  router.push({
+                    pathname: ROUTES.modal.questDetail as any,
+                    params: {
+                      questId: display.quest!.id,
+                      poiId: display.quest?.poi_id ?? undefined,
+                      poiName: display.quest?.poi_name ?? undefined,
+                    },
+                  })
+                }
               >
                 <View style={styles.questIconWrap}>
                   <Ionicons name="flash" size={14} color="#4B5563" />
@@ -188,6 +235,25 @@ export default function PostDetailScreen() {
             </View>
           ) : null}
 
+          {display.event ? (
+            <Pressable
+              style={styles.eventCard}
+              onPress={() =>
+                router.push({
+                  pathname: ROUTES.modal.eventDetail as any,
+                  params: { eventId: display.event!.id },
+                })
+              }
+            >
+              <Ionicons name="trophy-outline" size={14} color="#6B7280" />
+              <View style={styles.eventBody}>
+                <Text style={styles.questLabel}>Event</Text>
+                <Text style={styles.questTitle}>{display.event.title}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
+            </Pressable>
+          ) : null}
+
           <Pressable onPress={() => setCommentOpen(true)}>
             <Text style={styles.viewComments}>{`View all ${display.comments} comments`}</Text>
           </Pressable>
@@ -205,6 +271,7 @@ export default function PostDetailScreen() {
         onClose={() => setCommentOpen(false)}
         totalComments={display.comments}
         postId={display.id}
+        onCommentCountChange={updateCommentCount}
       />
     </>
   );
@@ -280,6 +347,19 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 12,
   },
+  eventRibbon: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: 4,
+    left: 12,
+    maxWidth: '80%',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    position: 'absolute',
+    top: 44,
+  },
   questRibbonText: {
     color: '#fff',
     fontSize: 11,
@@ -318,6 +398,21 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 14,
     overflow: 'hidden',
+  },
+  eventCard: {
+    alignItems: 'center',
+    borderColor: '#E5E7EB',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    marginHorizontal: 16,
+    marginTop: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  eventBody: {
+    flex: 1,
   },
   questHead: {
     alignItems: 'center',
