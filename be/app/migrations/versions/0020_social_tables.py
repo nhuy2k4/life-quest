@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
 revision = "0020_social_tables"
-down_revision = "0019_add_recommendation_log_ml_fields"
+down_revision = "0019_add_recommendation"
 branch_labels = None
 depends_on = None
 

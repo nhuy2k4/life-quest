@@ -8,7 +8,7 @@ Create Date: 2026-05-07 00:00:00.000000
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0019_add_recommendation_log_ml_fields"
+revision = "0019_add_recommendation"
 down_revision = "0018_recommendation_v2_tables"
 branch_labels = None
 depends_on = None
