@@ -16,6 +16,10 @@ type GoogleLoginRequest = {
   id_token: string;
 };
 
+type RefreshTokenRequest = {
+  refresh_token: string;
+};
+
 const AUTH_BASE_PATH = '/auth';
 
 export type RegisterRequest = {
@@ -80,5 +84,14 @@ export async function loginWithGoogle(idToken: string): Promise<TokenResponse> {
   return requestJson<TokenResponse>(`${AUTH_BASE_PATH}/google/login`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export async function refreshToken(refreshTokenValue: string): Promise<TokenResponse> {
+  const payload: RefreshTokenRequest = { refresh_token: refreshTokenValue };
+  return requestJson<TokenResponse>(`${AUTH_BASE_PATH}/refresh`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    skipRefresh: true,
   });
 }

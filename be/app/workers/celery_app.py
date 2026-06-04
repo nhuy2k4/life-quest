@@ -40,9 +40,8 @@ if not settings.TESTING:
 			"task": "maintenance.reco_daily_stats",
 			"schedule": crontab(minute=10, hour=0),
 		},
-		"reco_trending_scores_7d": {
-			"task": "maintenance.reco_trending_scores",
-			"schedule": crontab(minute=20, hour=0),
-			"args": ("7d",),
+		"reco_log_retention": {
+			"task": "maintenance.reco_log_retention",
+			"schedule": crontab(minute=30, hour=0),
 		},
 	}

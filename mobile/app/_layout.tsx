@@ -5,9 +5,11 @@ import 'react-native-reanimated';
 import { useEffect } from 'react';
 
 import { AuthProvider } from '@/contexts/AuthContext';
+import { BadgeProvider } from '@/contexts/BadgeContext';
 import { PostProvider } from '@/contexts/PostContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { UserProvider } from '@/contexts/UserContext';
+import { XpGainProvider } from '@/contexts/XpGainContext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { logWatchdog, startWatchdog } from '@/utils/watchdog';
 
@@ -26,24 +28,28 @@ export default function RootLayout() {
 
   return (
     <ToastProvider>
-      <AuthProvider>
-        <UserProvider>
-          <PostProvider>
-            <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="index" />
-                <Stack.Screen name="(auth)" />
-                <Stack.Screen name="(onboarding)" />
-                <Stack.Screen name="(main)" />
-                <Stack.Screen name="auth/callback" options={{ presentation: 'transparentModal', headerShown: false }} />
-                <Stack.Screen name="post-detail" />
-                <Stack.Screen name="quest-detail" />
-              </Stack>
-              <StatusBar style="auto" />
-            </ThemeProvider>
-          </PostProvider>
-        </UserProvider>
-      </AuthProvider>
+      <XpGainProvider>
+        <AuthProvider>
+          <UserProvider>
+            <BadgeProvider>
+              <PostProvider>
+                <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="index" />
+                    <Stack.Screen name="(auth)" />
+                    <Stack.Screen name="(onboarding)" />
+                    <Stack.Screen name="(main)" />
+                    <Stack.Screen name="auth/callback" options={{ presentation: 'transparentModal', headerShown: false }} />
+                    <Stack.Screen name="post-detail" />
+                    <Stack.Screen name="quest-detail" />
+                  </Stack>
+                  <StatusBar style="auto" />
+                </ThemeProvider>
+              </PostProvider>
+            </BadgeProvider>
+          </UserProvider>
+        </AuthProvider>
+      </XpGainProvider>
     </ToastProvider>
   );
 }

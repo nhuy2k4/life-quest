@@ -1,15 +1,22 @@
 import uuid
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import BadRequestException, ConflictException, ForbiddenException, NotFoundException
+from app.models.recommendation import RecommendationLog
+from app.models.event import Event, EventQuest
 from app.models.social import Comment, Follow, Like, Post
+from app.models.quest_instance import QuestInstance
+from app.models.poi import Poi
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.user_quest import UserQuest
+from app.models.quest import Quest
+from app.models.enums import EventStatus, SubmissionStatus
 from app.schemas.common import PaginatedResponse
 from app.schemas.social import (
 	CommentCreateRequest,
@@ -19,6 +26,7 @@ from app.schemas.social import (
 	FollowListResponse,
 	PostCreateRequest,
 	PostQuestInfo,
+	PostEventInfo,
 	PostResponse,
 )
 from app.schemas.user import UserPublicResponse
@@ -29,19 +37,26 @@ class SocialService:
 	def __init__(self, db: AsyncSession) -> None:
 		self.db = db
 
-	async def get_feed(self, *, user_id: uuid.UUID, page: int, page_size: int) -> FeedResponse:
+	async def get_feed(self, *, user_id: uuid.UUID, page: int, page_size: int, scope: str = "all") -> FeedResponse:
 		offset = (page - 1) * page_size
 
-		# GLOBAL FEED: Fetch all posts for dev demo discovery
-		total = await self.db.scalar(
-			select(func.count()).select_from(Post)
-		)
+		base = select(Post)
+		total_base = select(func.count()).select_from(Post)
+		if scope == "following":
+			following_subquery = select(Follow.following_id).where(Follow.follower_id == user_id)
+			base = base.where(Post.user_id.in_(following_subquery))
+			total_base = total_base.where(Post.user_id.in_(following_subquery))
+
+		total = await self.db.scalar(total_base)
 		rows = await self.db.scalars(
-			select(Post)
+			base
 			.options(
 				selectinload(Post.user),
+				selectinload(Post.submission).selectinload(Submission.poi),
 				selectinload(Post.submission).selectinload(Submission.user_quest).selectinload(UserQuest.quest),
 				selectinload(Post.quest),
+				selectinload(Post.poi),
+				selectinload(Post.event),
 			)
 			.order_by(Post.created_at.desc())
 			.offset(offset)
@@ -51,7 +66,17 @@ class SocialService:
 
 
 		liked_post_ids = await self._get_liked_post_ids(user_id=user_id, post_ids=[post.id for post in posts])
-		items = [self._to_post_response(post, liked_by_me=post.id in liked_post_ids) for post in posts]
+		following_ids = await self._get_following_ids(user_id=user_id)
+		counts_by_post = await self._get_post_counts(post_ids=[post.id for post in posts])
+		items = [
+			self._to_post_response(
+				post,
+				liked_by_me=post.id in liked_post_ids,
+				followed_by_me=post.user_id in following_ids,
+				counts=counts_by_post.get(post.id),
+			)
+			for post in posts
+		]
 
 		return FeedResponse.create(
 			items=items,
@@ -60,7 +85,51 @@ class SocialService:
 			page_size=page_size,
 		)
 
+	async def search_posts(self, *, user_id: uuid.UUID, query: str, page: int, page_size: int) -> FeedResponse:
+		offset = (page - 1) * page_size
+		term = f"%{query.strip()}%"
+		filter_expr = or_(
+			Post.caption.ilike(term),
+			User.username.ilike(term),
+		)
+		base = select(Post).join(User, Post.user_id == User.id).where(filter_expr)
+		total_base = select(func.count()).select_from(Post).join(User, Post.user_id == User.id).where(filter_expr)
+
+		total = await self.db.scalar(total_base)
+		rows = await self.db.scalars(
+			base
+			.options(
+				selectinload(Post.user),
+				selectinload(Post.submission).selectinload(Submission.poi),
+				selectinload(Post.submission).selectinload(Submission.user_quest).selectinload(UserQuest.quest),
+				selectinload(Post.quest),
+				selectinload(Post.poi),
+				selectinload(Post.event),
+			)
+			.order_by(Post.created_at.desc())
+			.offset(offset)
+			.limit(page_size)
+		)
+		posts = rows.all()
+
+		liked_post_ids = await self._get_liked_post_ids(user_id=user_id, post_ids=[post.id for post in posts])
+		following_ids = await self._get_following_ids(user_id=user_id)
+		counts_by_post = await self._get_post_counts(post_ids=[post.id for post in posts])
+		items = [
+			self._to_post_response(
+				post,
+				liked_by_me=post.id in liked_post_ids,
+				followed_by_me=post.user_id in following_ids,
+				counts=counts_by_post.get(post.id),
+			)
+			for post in posts
+		]
+		return FeedResponse.create(items=items, total=int(total or 0), page=page, page_size=page_size)
+
 	async def create_post(self, *, user_id: uuid.UUID, payload: PostCreateRequest) -> PostResponse:
+		quest_id: uuid.UUID | None = None
+		event_id: uuid.UUID | None = None
+
 		if payload.submission_id:
 			existing_post = await self._get_post_by_submission(
 				user_id=user_id,
@@ -71,18 +140,51 @@ class SocialService:
 
 			submission = await self.db.scalar(
 				select(Submission)
+				.options(selectinload(Submission.user_quest))
 				.join(UserQuest, Submission.user_quest_id == UserQuest.id)
 				.where(Submission.id == payload.submission_id, UserQuest.user_id == user_id)
 			)
 			if submission is None:
 				raise NotFoundException("Submission không tồn tại hoặc không thuộc về bạn")
-			post = Post(user_id=user_id, submission_id=payload.submission_id, caption=payload.caption)
+			quest_id = submission.user_quest.quest_id if submission.user_quest else None
+			event_id = (
+				await self._get_active_event_id_for_quest(quest_id=quest_id)
+				if submission.status == SubmissionStatus.APPROVED
+				else None
+			)
+			post = Post(
+				user_id=user_id,
+				submission_id=payload.submission_id,
+				quest_id=quest_id,
+				event_id=event_id,
+				caption=payload.caption,
+				location_name=payload.location_name,
+				poi_id=payload.poi_id,
+			)
 		else:
+			if not payload.image_url:
+				raise BadRequestException("image_url lÃ  báº¯t buá»™c khi táº¡o post khÃ´ng cÃ³ submission")
+
+			quest = None
+			if payload.quest_id:
+				quest = await self.db.scalar(select(Quest).where(Quest.id == payload.quest_id, Quest.is_active.is_(True)))
+				if quest is None:
+					raise NotFoundException("Quest khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ bá»‹ táº¯t")
+
+			if payload.poi_id:
+				poi = await self.db.scalar(select(Poi).where(Poi.id == payload.poi_id, Poi.is_active.is_(True)))
+				if poi is None:
+					raise NotFoundException("POI khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ bá»‹ táº¯t")
+
+			quest_id = payload.quest_id if quest else None
 			post = Post(
 				user_id=user_id, 
 				image_url=payload.image_url, 
 				caption=payload.caption,
-				quest_id=payload.quest_id
+				location_name=payload.location_name,
+				quest_id=quest_id,
+				event_id=None,
+				poi_id=payload.poi_id,
 			)
 
 		self.db.add(post)
@@ -99,10 +201,31 @@ class SocialService:
 					return self._to_post_response(existing_post, liked_by_me=False)
 			raise ConflictException("Lỗi khi tạo post") from exc
 
+		if payload.quest_id and payload.poi_id:
+			await self.db.execute(
+				insert(QuestInstance)
+				.values(
+					quest_id=payload.quest_id,
+					user_id=user_id,
+					poi_id=payload.poi_id,
+				)
+				.on_conflict_do_nothing()
+			)
+			await self.db.commit()
+
+		try:
+			from app.services.gamification.badge_service import BadgeService
+			badge_service = BadgeService(self.db)
+			await badge_service.evaluate_and_award_badges(user_id=user_id)
+			await self.db.commit()
+		except Exception:
+			await self.db.rollback()
+
 		stored = await self._get_post(post.id)
 		if stored is None:
 			raise NotFoundException("Post không tồn tại")
-		return self._to_post_response(stored, liked_by_me=False)
+		counts = (await self._get_post_counts(post_ids=[stored.id])).get(stored.id)
+		return self._to_post_response(stored, liked_by_me=False, counts=counts)
 
 	async def delete_post(self, *, user_id: uuid.UUID, post_id: uuid.UUID) -> None:
 		post = await self.db.scalar(select(Post).where(Post.id == post_id))
@@ -131,6 +254,7 @@ class SocialService:
 			.where(Post.id == post_id)
 			.values(like_count=Post.like_count + 1)
 		)
+		await self._log_post_interaction(user_id=user_id, post=post, event="post_liked")
 		if post.user_id != user_id:
 			actor = await self.db.scalar(select(User).where(User.id == user_id))
 			await NotificationService(self.db).create_notification(
@@ -142,6 +266,14 @@ class SocialService:
 					"actor_username": actor.username if actor else None,
 				},
 			)
+
+		try:
+			from app.services.gamification.badge_service import BadgeService
+			badge_service = BadgeService(self.db)
+			await self.db.flush()
+			await badge_service.evaluate_and_award_badges(user_id=post.user_id)
+		except Exception:
+			await self.db.rollback()
 		await self.db.commit()
 
 	async def unlike_post(self, *, user_id: uuid.UUID, post_id: uuid.UUID) -> None:
@@ -186,6 +318,7 @@ class SocialService:
 			.where(Post.id == post_id)
 			.values(comment_count=Post.comment_count + 1)
 		)
+		await self._log_post_interaction(user_id=user_id, post=post, event="post_commented")
 		if post.user_id != user_id:
 			actor = await self.db.scalar(select(User).where(User.id == user_id))
 			await NotificationService(self.db).create_notification(
@@ -199,12 +332,21 @@ class SocialService:
 					"comment_preview": comment.content[:120],
 				},
 			)
+
+		try:
+			from app.services.gamification.badge_service import BadgeService
+			badge_service = BadgeService(self.db)
+			await self.db.flush()
+			await badge_service.evaluate_and_award_badges(user_id=user_id)
+		except Exception:
+			await self.db.rollback()
 		await self.db.commit()
 
 		stored = await self._get_post(post_id)
 		if stored is None:
 			raise NotFoundException("Post không tồn tại")
-		return self._to_post_response(stored, liked_by_me=False)
+		counts = (await self._get_post_counts(post_ids=[stored.id])).get(stored.id)
+		return self._to_post_response(stored, liked_by_me=False, counts=counts)
 
 	async def list_comments(
 		self,
@@ -261,6 +403,15 @@ class SocialService:
 		if target is None:
 			raise NotFoundException("User không tồn tại")
 
+		existing = await self.db.scalar(
+			select(Follow).where(
+				Follow.follower_id == follower_id,
+				Follow.following_id == following_id,
+			)
+		)
+		if existing is not None:
+			return
+
 		self.db.add(Follow(follower_id=follower_id, following_id=following_id))
 		try:
 			actor = await self.db.scalar(select(User).where(User.id == follower_id))
@@ -284,8 +435,6 @@ class SocialService:
 				Follow.following_id == following_id,
 			)
 		)
-		if result.rowcount == 0:
-			raise NotFoundException("Bạn chưa follow user này")
 		await self.db.commit()
 
 	async def list_followers(
@@ -370,13 +519,63 @@ class SocialService:
 		)
 		return {row[0] for row in rows.all()}
 
+	async def _get_post_counts(self, *, post_ids: list[uuid.UUID]) -> dict[uuid.UUID, tuple[int, int]]:
+		if not post_ids:
+			return {}
+		like_rows = await self.db.execute(
+			select(Like.post_id, func.count().label("count"))
+			.where(Like.post_id.in_(post_ids))
+			.group_by(Like.post_id)
+		)
+		comment_rows = await self.db.execute(
+			select(Comment.post_id, func.count().label("count"))
+			.where(Comment.post_id.in_(post_ids), Comment.is_deleted.is_(False))
+			.group_by(Comment.post_id)
+		)
+		counts = {post_id: [0, 0] for post_id in post_ids}
+		for post_id, count in like_rows.all():
+			counts[post_id][0] = int(count or 0)
+		for post_id, count in comment_rows.all():
+			counts[post_id][1] = int(count or 0)
+		return {post_id: (values[0], values[1]) for post_id, values in counts.items()}
+
+	async def _get_post_quest_id(self, post: Post) -> uuid.UUID | None:
+		if post.quest_id is not None:
+			return post.quest_id
+		if post.submission_id is None:
+			return None
+		return await self.db.scalar(
+			select(UserQuest.quest_id)
+			.join(Submission, Submission.user_quest_id == UserQuest.id)
+			.where(Submission.id == post.submission_id)
+		)
+
+	async def _log_post_interaction(self, *, user_id: uuid.UUID, post: Post, event: str) -> None:
+		quest_id = await self._get_post_quest_id(post)
+		score = 3.0 if event == "post_commented" else 1.0
+		self.db.add(
+			RecommendationLog(
+				user_id=user_id,
+				quest_id=quest_id,
+				post_id=post.id,
+				event=event,
+				score=score,
+				rank=0,
+				request_id=uuid.uuid4(),
+				algorithm_version="social_interaction_v1",
+			)
+		)
+
 	async def _get_post(self, post_id: uuid.UUID) -> Post | None:
 		return await self.db.scalar(
 			select(Post)
 			.options(
 				selectinload(Post.user),
+				selectinload(Post.submission).selectinload(Submission.poi),
 				selectinload(Post.submission).selectinload(Submission.user_quest).selectinload(UserQuest.quest),
 				selectinload(Post.quest),
+				selectinload(Post.poi),
+				selectinload(Post.event),
 			)
 			.where(Post.id == post_id)
 		)
@@ -386,47 +585,98 @@ class SocialService:
 			select(Post)
 			.options(
 				selectinload(Post.user),
+				selectinload(Post.submission).selectinload(Submission.poi),
 				selectinload(Post.submission).selectinload(Submission.user_quest).selectinload(UserQuest.quest),
 				selectinload(Post.quest),
+				selectinload(Post.poi),
+				selectinload(Post.event),
 			)
 			.where(Post.user_id == user_id, Post.submission_id == submission_id)
 		)
 
+	async def _get_active_event_id_for_quest(self, *, quest_id: uuid.UUID | None) -> uuid.UUID | None:
+		if quest_id is None:
+			return None
+		now = func.now()
+		event_id = await self.db.scalar(
+			select(Event.id)
+			.join(EventQuest, EventQuest.event_id == Event.id)
+			.where(
+				EventQuest.quest_id == quest_id,
+				Event.status == EventStatus.ACTIVE,
+				Event.start_at <= now,
+				Event.end_at >= now,
+			)
+			.order_by(Event.start_at.desc())
+			.limit(1)
+		)
+		return event_id
+
 	@staticmethod
-	def _to_post_response(post: Post, *, liked_by_me: bool) -> PostResponse:
+	def _to_post_response(
+		post: Post,
+		*,
+		liked_by_me: bool,
+		followed_by_me: bool = False,
+		counts: tuple[int, int] | None = None,
+	) -> PostResponse:
 		submission_image_url = post.image_url or (post.submission.image_url if post.submission else None)
+		submission_poi_name = post.submission.poi.name if post.submission and post.submission.poi else None
+		submission_poi_id = post.submission.poi_id if post.submission else None
+		post_poi_name = post.poi.name if post.poi else None
+		post_poi_id = post.poi_id
+		user_quest_poi_id = (
+			post.submission.user_quest.poi_id
+			if post.submission and post.submission.user_quest
+			else None
+		)
 
 		quest_info = None
+		event_info = None
 		
 		# PRIORITY 1: Load quest data linked via physical submission
 		if post.submission and post.submission.user_quest and post.submission.user_quest.quest:
 			q = post.submission.user_quest.quest
 			quest_info = PostQuestInfo(
 				id=q.id,
+				poi_id=submission_poi_id or user_quest_poi_id or post_poi_id,
 				title=q.title,
 				description=q.description,
 				xp_reward=q.xp_reward,
+				poi_name=submission_poi_name or post_poi_name,
 			)
 		# PRIORITY 2: Fallback to direct post-to-quest linkage for "Tag only" free posts
 		elif post.quest:
 			q = post.quest
 			quest_info = PostQuestInfo(
 				id=q.id,
+				poi_id=post_poi_id,
 				title=q.title,
 				description=q.description,
 				xp_reward=q.xp_reward,
+				poi_name=post_poi_name or submission_poi_name,
 			)
 
+		if post.event:
+			event_info = PostEventInfo(
+				id=post.event.id,
+				title=post.event.title,
+			)
+
+		like_count, comment_count = counts if counts is not None else (post.like_count, post.comment_count)
 		return PostResponse(
 			id=post.id,
 			submission_id=post.submission_id,
 			submission_image_url=submission_image_url,
 			caption=post.caption,
+			location_name=post.location_name or post_poi_name,
 			quest=quest_info,
+			event=event_info,
 			user=UserPublicResponse.model_validate(post.user),
-			like_count=post.like_count,
-			comment_count=post.comment_count,
+			like_count=like_count,
+			comment_count=comment_count,
 			liked_by_me=liked_by_me,
+			followed_by_me=followed_by_me,
 			created_at=post.created_at,
 		)
 

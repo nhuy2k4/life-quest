@@ -9,9 +9,10 @@ from app.models.base import TimestampMixin, UUIDMixin
 from app.models.enums import AuthProvider, UserRole, sql_enum
 
 if TYPE_CHECKING:
-    from app.models.audit import AuditLog, RewardLog, SubmissionReview, UserEvent
+    from app.models.audit import AuditLog
     from app.models.auth import Level, RefreshToken
     from app.models.badge import UserBadge
+    from app.models.chat import Conversation, Message
     from app.models.notification import Notification
     from app.models.social import Comment, Follow, Like, Post
     from app.models.user_preference import UserPreference
@@ -34,6 +35,9 @@ class User(Base, UUIDMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
+    display_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    bio: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email: Mapped[str] = mapped_column(
         String(100),
         unique=True,
@@ -111,23 +115,9 @@ class User(Base, UUIDMixin, TimestampMixin):
         back_populates="user",
         cascade="all, delete-orphan",
     )
-    submission_reviews: Mapped[list["SubmissionReview"]] = relationship(
-        "SubmissionReview",
-        back_populates="reviewer",
-    )
-    reward_logs: Mapped[list["RewardLog"]] = relationship(
-        "RewardLog",
-        back_populates="user",
-        cascade="all, delete-orphan",
-    )
     audit_logs: Mapped[list["AuditLog"]] = relationship(
         "AuditLog",
         back_populates="actor",
-    )
-    events: Mapped[list["UserEvent"]] = relationship(
-        "UserEvent",
-        back_populates="user",
-        cascade="all, delete-orphan",
     )
 
     @property

@@ -27,4 +27,8 @@ class XpService:
 			source=XpSource.QUEST_APPROVED,
 		)
 		user.xp += amount
+
+		level = await self.repository.get_level_for_xp(user.xp)
+		if level is not None and user.level_id != level.id:
+			user.level_id = level.id
 		return amount

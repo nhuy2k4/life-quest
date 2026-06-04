@@ -9,6 +9,8 @@ from app.core.database import Base
 from app.models.base import UUIDMixin
 
 if TYPE_CHECKING:
+	from app.models.poi import Poi
+	from app.models.event import Event
 	from app.models.submission import Submission
 	from app.models.user import User
 	from app.models.quest import Quest
@@ -49,6 +51,16 @@ class Post(Base, UUIDMixin):
 		nullable=True,
 		index=True,
 	)
+	poi_id: Mapped[uuid.UUID | None] = mapped_column(
+		ForeignKey("pois.id", ondelete="SET NULL"),
+		nullable=True,
+		index=True,
+	)
+	event_id: Mapped[uuid.UUID | None] = mapped_column(
+		ForeignKey("events.id", ondelete="SET NULL"),
+		nullable=True,
+		index=True,
+	)
 	user_id: Mapped[uuid.UUID] = mapped_column(
 		ForeignKey("users.id", ondelete="CASCADE"),
 		nullable=False,
@@ -59,6 +71,7 @@ class Post(Base, UUIDMixin):
 	image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 	caption: Mapped[str | None] = mapped_column(Text, nullable=True)
+	location_name: Mapped[str | None] = mapped_column(Text, nullable=True)
 	created_at: Mapped[datetime] = mapped_column(
 		DateTime(timezone=True),
 		server_default=func.now(),
@@ -67,6 +80,8 @@ class Post(Base, UUIDMixin):
 
 	submission: Mapped["Submission | None"] = relationship("Submission", back_populates="post")
 	quest: Mapped["Quest | None"] = relationship("Quest")
+	poi: Mapped["Poi | None"] = relationship("Poi")
+	event: Mapped["Event | None"] = relationship("Event", back_populates="posts")
 	user: Mapped["User"] = relationship("User", back_populates="posts")
 	likes: Mapped[list["Like"]] = relationship("Like", back_populates="post", cascade="all, delete-orphan")
 	comments: Mapped[list["Comment"]] = relationship("Comment", back_populates="post", cascade="all, delete-orphan")

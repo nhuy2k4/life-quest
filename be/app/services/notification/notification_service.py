@@ -223,6 +223,8 @@ class NotificationService:
 			return "New comment"
 		if notification_type == "follow":
 			return "New follower"
+		if notification_type == "chat_message":
+			return "New message"
 		if notification_type == "quest_complete":
 			return "Quest approved"
 		if notification_type == "quest_rejected":
@@ -238,6 +240,8 @@ class NotificationService:
 			return f"{actor or 'Someone'} commented on your post."
 		if notification_type == "follow":
 			return f"{actor or 'Someone'} followed you."
+		if notification_type == "chat_message":
+			return f"{data.get('sender_username') or 'Someone'} sent you a message."
 		if notification_type == "quest_complete":
 			return "Your quest was approved and XP was added."
 		if notification_type == "quest_rejected":

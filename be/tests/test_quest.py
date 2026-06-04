@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.database import Base
@@ -17,7 +17,9 @@ from app.deps.auth import CurrentUser, get_current_user
 from app.deps.db import get_db
 from app.main import app
 from app.models.enums import SubmissionStatus, UserQuestStatus
+from app.models.poi import Poi
 from app.models.quest import Quest
+from app.models.social import Post
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.user_quest import UserQuest
@@ -85,7 +87,6 @@ async def seeded_user_and_quest():
             template="Take a photo of a {label}",
             labels=["coffee"],
             min_confidence=0.5,
-            poi_required=False,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )
@@ -150,7 +151,121 @@ async def test_list_quests_success(client: AsyncClient):
     assert "rendered_text" in first
     assert "labels" in first
     assert "min_confidence" in first
-    assert "poi_required" in first
+    assert "user_status" in first
+
+
+@pytest.mark.asyncio
+async def test_quest_status_is_scoped_by_poi(client: AsyncClient, seeded_user_and_quest):
+    user_id, quest_id = seeded_user_and_quest
+    poi_a_id = uuid.uuid4()
+    poi_b_id = uuid.uuid4()
+
+    async with TestSessionLocal() as session:
+        session.add_all(
+            [
+                Poi(
+                    id=poi_a_id,
+                    name="Point A",
+                    poi_type="campus",
+                    latitude=10.0,
+                    longitude=106.0,
+                    radius_m=100,
+                    source="test",
+                    external_id=f"poi-{poi_a_id.hex[:8]}",
+                    is_active=True,
+                ),
+                Poi(
+                    id=poi_b_id,
+                    name="Point B",
+                    poi_type="campus",
+                    latitude=10.1,
+                    longitude=106.1,
+                    radius_m=100,
+                    source="test",
+                    external_id=f"poi-{poi_b_id.hex[:8]}",
+                    is_active=True,
+                ),
+                UserQuest(
+                    user_id=user_id,
+                    quest_id=quest_id,
+                    poi_id=poi_a_id,
+                    status=UserQuestStatus.APPROVED,
+                    started_at=datetime.now(timezone.utc),
+                    expires_at=None,
+                ),
+            ]
+        )
+        await session.commit()
+
+    base_detail = await client.get(f"/api/v1/quests/{quest_id}")
+    assert base_detail.status_code == 200
+    assert base_detail.json()["poi_id"] is None
+    assert base_detail.json()["user_status"] == "not_started"
+
+    poi_a_detail = await client.get(f"/api/v1/quests/{quest_id}", params={"poi_id": str(poi_a_id)})
+    assert poi_a_detail.status_code == 200
+    assert poi_a_detail.json()["poi_id"] == str(poi_a_id)
+    assert poi_a_detail.json()["user_status"] == "approved"
+
+    poi_b_detail = await client.get(f"/api/v1/quests/{quest_id}", params={"poi_id": str(poi_b_id)})
+    assert poi_b_detail.status_code == 200
+    assert poi_b_detail.json()["poi_id"] == str(poi_b_id)
+    assert poi_b_detail.json()["user_status"] == "not_started"
+
+    list_response = await client.get("/api/v1/quests")
+    assert list_response.status_code == 200
+    item = next(item for item in list_response.json()["items"] if item["id"] == str(quest_id))
+    assert item["poi_id"] is None
+    assert item["user_status"] == "not_started"
+
+
+@pytest.mark.asyncio
+async def test_quest_log_includes_completed_poi_instances(client: AsyncClient, seeded_user_and_quest):
+    user_id, quest_id = seeded_user_and_quest
+    poi_id = uuid.uuid4()
+
+    async with TestSessionLocal() as session:
+        session.add(
+            Poi(
+                id=poi_id,
+                name="Point A",
+                poi_type="campus",
+                latitude=10.0,
+                longitude=106.0,
+                radius_m=100,
+                source="test",
+                external_id=f"poi-{poi_id.hex[:8]}",
+                is_active=True,
+            )
+        )
+        session.add(
+            UserQuest(
+                user_id=user_id,
+                quest_id=quest_id,
+                poi_id=poi_id,
+                status=UserQuestStatus.APPROVED,
+                started_at=datetime.now(timezone.utc),
+                expires_at=None,
+            )
+        )
+        await session.commit()
+
+    response = await client.get("/api/v1/quests/log")
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert any(
+        item["id"] == str(quest_id)
+        and item["poi_id"] is None
+        and item["user_status"] == "not_started"
+        for item in items
+    )
+    assert any(
+        item["id"] == str(quest_id)
+        and item["poi_id"] == str(poi_id)
+        and item["poi_name"] == "Point A"
+        and item["user_status"] == "approved"
+        for item in items
+    )
 
 
 @pytest.mark.asyncio
@@ -280,6 +395,82 @@ async def test_retry_rejected_submission_updates_same_submission(client: AsyncCl
 
 
 @pytest.mark.asyncio
+async def test_retry_rejected_submission_updates_existing_post_instead_of_creating_duplicate(
+    client: AsyncClient,
+    admin_client: AsyncClient,
+    seeded_user_and_quest,
+):
+    _, quest_id = seeded_user_and_quest
+
+    await client.post(f"/api/v1/quests/{quest_id}/start")
+    first_post = await client.post(
+        "/api/v1/social/posts",
+        json={
+            "image_url": "https://res.cloudinary.com/demo/image/upload/old.jpg",
+            "quest_id": str(quest_id),
+            "caption": "old caption",
+        },
+    )
+    assert first_post.status_code == 200
+    old_post_id = first_post.json()["id"]
+
+    submit_response = await client.post(
+        f"/api/v1/quests/{quest_id}/submit",
+        json={
+            "post_id": old_post_id,
+            "image_url": "https://res.cloudinary.com/demo/image/upload/old.jpg",
+            "cloudinary_public_id": "old",
+            "file_hash": "v" * 32,
+        },
+    )
+    assert submit_response.status_code == 201
+    submission_id = submit_response.json()["submission_id"]
+
+    reject_response = await admin_client.patch(
+        f"/api/v1/admin/submissions/{submission_id}/reject",
+        json={"reason": "Image is invalid"},
+    )
+    assert reject_response.status_code == 200
+
+    retry_post = await client.post(
+        "/api/v1/social/posts",
+        json={
+            "image_url": "https://res.cloudinary.com/demo/image/upload/new.jpg",
+            "quest_id": str(quest_id),
+            "caption": "new caption",
+        },
+    )
+    assert retry_post.status_code == 200
+    new_post_id = retry_post.json()["id"]
+    assert new_post_id != old_post_id
+
+    retry_response = await client.post(
+        f"/api/v1/quests/{quest_id}/submit",
+        json={
+            "post_id": new_post_id,
+            "image_url": "https://res.cloudinary.com/demo/image/upload/new.jpg",
+            "cloudinary_public_id": "new",
+            "file_hash": "w" * 32,
+        },
+    )
+    assert retry_response.status_code == 201
+    assert retry_response.json()["submission_id"] == submission_id
+
+    async with TestSessionLocal() as session:
+        post_count = await session.scalar(select(func.count()).select_from(Post).where(Post.quest_id == quest_id))
+        assert post_count == 1
+
+        post = await session.scalar(select(Post).where(Post.id == uuid.UUID(old_post_id)))
+        assert post is not None
+        assert post.submission_id == uuid.UUID(submission_id)
+        assert post.image_url.endswith("/new.jpg")
+        assert post.caption == "new caption"
+
+        deleted_retry_post = await session.scalar(select(Post).where(Post.id == uuid.UUID(new_post_id)))
+        assert deleted_retry_post is None
+
+
+@pytest.mark.asyncio
 async def test_retry_rejected_submission_limited_to_three_updates(client: AsyncClient, seeded_user_and_quest):
     user_id, quest_id = seeded_user_and_quest
 
@@ -343,7 +534,6 @@ async def test_start_other_quest_allowed_when_mission_active(client: AsyncClient
                 template="Take a photo of a {label}",
                 labels=["tea"],
                 min_confidence=0.5,
-                poi_required=False,
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
             )

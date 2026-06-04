@@ -18,8 +18,8 @@ def evaluate_ai_quest(
     label_rules: dict[str, float] | None,
     min_confidence: float,
     vision_labels: list[dict],
-    poi_required: bool,
     poi_distance_m: float | None,
+    poi_required: bool = False,
 ) -> RuleResult:
     label_scores = {item.get("label", "").lower(): float(item.get("score", 0.0)) for item in vision_labels}
     label_thresholds = {key.lower(): float(value) for key, value in (label_rules or {}).items()}
@@ -49,11 +49,8 @@ def evaluate_ai_quest(
             reason="label_not_matched",
         )
 
-    poi_ok = True
-    if poi_required:
-        poi_ok = poi_distance_m is not None
-
-    if not poi_ok:
+    poi_ok = poi_distance_m is not None
+    if poi_required and not poi_ok:
         return RuleResult(
             status="rejected",
             matched_label=matched_label,

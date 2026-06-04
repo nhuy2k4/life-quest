@@ -2,6 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '@/components/ui/avatar';
+import { FeaturedBadgeRow } from '@/components/lifequest/badges/FeaturedBadgeRow';
+import { useBadgeContext } from '@/contexts/BadgeContext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import type { UserProfile } from '@/types';
 
@@ -25,7 +27,8 @@ export function ProfileHeader({
   onToggleFollow,
 }: ProfileHeaderProps) {
   const isDark = useColorScheme() === 'dark';
-  const followers = user.stats.followers + (isSelf || !isFollowing ? 0 : 1);
+  const followers = user.stats.followers;
+  const { featuredBadges } = useBadgeContext();
 
   return (
     <View style={[styles.container, isDark ? styles.containerDark : styles.containerLight]}>
@@ -59,11 +62,19 @@ export function ProfileHeader({
         </View>
 
         <View style={styles.textCenter}>
-          <Text style={[styles.username, isDark ? styles.textDark : styles.textLight]}>{`@${user.username}`}</Text>
+          <Text style={[styles.username, isDark ? styles.textDark : styles.textLight]}>{user.displayName || `@${user.username}`}</Text>
+          {user.displayName && user.displayName !== user.username ? (
+            <Text style={[styles.handle, isDark ? styles.bioDark : styles.bioLight]}>{`@${user.username}`}</Text>
+          ) : null}
           {user.bio ? (
             <Text style={[styles.bio, isDark ? styles.bioDark : styles.bioLight]}>{user.bio}</Text>
           ) : null}
         </View>
+
+        {/* Featured badges below user info */}
+        {featuredBadges.length > 0 ? (
+          <FeaturedBadgeRow featuredBadges={featuredBadges} />
+        ) : null}
 
         <View style={styles.followRow}>
           <View style={styles.statCenter}>
@@ -145,6 +156,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   username: { fontSize: 18, fontWeight: '700' },
+  handle: { fontSize: 12 },
   bio: { fontSize: 13, textAlign: 'center' },
   bioLight: { color: '#6B7280' },
   bioDark: { color: '#9CA3AF' },

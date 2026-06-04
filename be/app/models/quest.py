@@ -10,7 +10,7 @@ from app.models.enums import QuestDifficulty, sql_enum
 
 if TYPE_CHECKING:
 	from app.models.user_quest import UserQuest
-	from app.models.poi import Poi
+	from app.models.event import Event
 
 
 class QuestCategory(Base):
@@ -32,6 +32,7 @@ class Category(Base):
 	__tablename__ = "categories"
 
 	id: Mapped[int] = mapped_column(primary_key=True)
+	slug: Mapped[str | None] = mapped_column(String(80), nullable=True, unique=True, index=True)
 	name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
 	icon: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
@@ -61,12 +62,7 @@ class Quest(Base, UUIDMixin, TimestampMixin):
 	approval_rate: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
 	time_limit_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
 	location_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-	poi_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 	is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
-	poi_id: Mapped[uuid.UUID | None] = mapped_column(
-		ForeignKey("pois.id", ondelete="SET NULL"),
-		nullable=True,
-	)
 
 	categories: Mapped[list["Category"]] = relationship(
 		"Category",
@@ -78,4 +74,8 @@ class Quest(Base, UUIDMixin, TimestampMixin):
 		back_populates="quest",
 		cascade="all, delete-orphan",
 	)
-	poi: Mapped["Poi | None"] = relationship("Poi", back_populates="quests")
+	events: Mapped[list["Event"]] = relationship(
+		"Event",
+		secondary="event_quests",
+		back_populates="quests",
+	)

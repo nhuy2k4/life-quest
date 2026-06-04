@@ -1,40 +1,45 @@
 import { type Href, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { InterestTag } from '@/components/lifequest/InterestTag';
 import { LQButton } from '@/components/lifequest/LQButton';
 import { ROUTES } from '@/constants/routes';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { listCategories, type CategoryItem } from '@/services/categoryService';
 import { HttpError } from '@/services/httpClient';
 import { saveMyPreferences } from '@/services/preferenceService';
 import { getItem, StorageKeys } from '@/utils/storage';
 
-const interests = [
-  'Food',
-  'Fitness',
-  'Travel',
-  'Lifestyle',
-  'Community',
-  'Photography',
-  'Nature',
-  'Art',
-  'Music',
-  'Reading',
-  'Cooking',
-  'Gaming',
-];
-
 export default function OnboardingInterestsScreen() {
   const router = useRouter();
   const { setOnboardingCompleted } = useAuthContext();
-  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [selectedInterests, setSelectedInterests] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const toggleInterest = (interest: string) => {
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const token = await getItem<string>(StorageKeys.accessToken);
+        if (!token) return;
+        const items = await listCategories(token);
+        setCategories(items);
+      } catch {
+        setError('Unable to load interests right now.');
+      } finally {
+        setIsLoadingCategories(false);
+      }
+    };
+
+    void loadCategories();
+  }, []);
+
+  const toggleInterest = (categoryId: number) => {
     setSelectedInterests((prev) =>
-      prev.includes(interest) ? prev.filter((item) => item !== interest) : [...prev, interest]
+      prev.includes(categoryId) ? prev.filter((item) => item !== categoryId) : [...prev, categoryId]
     );
   };
 
@@ -50,13 +55,8 @@ export default function OnboardingInterestsScreen() {
         throw new Error('Missing access token');
       }
 
-      const selectedIds = interests
-        .map((interest, index) => ({ interest, id: index + 1 }))
-        .filter((entry) => selectedInterests.includes(entry.interest))
-        .map((entry) => entry.id);
-
       await saveMyPreferences(token, {
-        interests: selectedIds,
+        interests: selectedInterests,
         activity_level: 'medium',
         location_enabled: true,
       });
@@ -83,12 +83,12 @@ export default function OnboardingInterestsScreen() {
         </View>
 
         <View style={styles.tagsWrap}>
-          {interests.map((interest) => (
+          {categories.map((category) => (
             <InterestTag
-              key={interest}
-              label={interest}
-              selected={selectedInterests.includes(interest)}
-              onPress={() => toggleInterest(interest)}
+              key={category.id}
+              label={category.name}
+              selected={selectedInterests.includes(category.id)}
+              onPress={() => toggleInterest(category.id)}
             />
           ))}
         </View>
@@ -100,7 +100,7 @@ export default function OnboardingInterestsScreen() {
           variant="primary"
           fullWidth
           loading={isSubmitting}
-          disabled={selectedInterests.length === 0}
+          disabled={selectedInterests.length === 0 || isLoadingCategories}
           onPress={() => void completeOnboarding()}
         />
         <LQButton

@@ -1,9 +1,11 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { getItem, removeItem, setItem, StorageKeys } from '@/utils/storage';
+import { warmLocationCache } from '@/services/locationService';
 
 export default function CameraScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -11,6 +13,19 @@ export default function CameraScreen() {
   const [torchEnabled, setTorchEnabled] = useState(false);
   const cameraRef = useRef<CameraView | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    const resetQuestContext = async () => {
+      const mode = await getItem<string>(StorageKeys.cameraMode);
+      if (mode === 'quest') {
+        return;
+      }
+      await setItem(StorageKeys.cameraMode, 'free');
+      await removeItem(StorageKeys.attachedQuest);
+    };
+    void resetQuestContext();
+    void warmLocationCache();
+  }, []);
 
   const handleCapture = async () => {
     if (!cameraRef.current) {

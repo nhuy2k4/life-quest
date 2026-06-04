@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -22,8 +22,11 @@ import { Button } from '@/components/ui/button';
 import { ROUTES } from '@/constants/routes';
 import { usePostContext } from '@/contexts/PostContext';
 import { useToast } from '@/contexts/ToastContext';
-import { computeFileHash, submitQuest, recommendQuestsFromImage, type QuestListItem } from '@/services/questService';
-import { createPost } from '@/services/socialService';
+import { useXpGain } from '@/contexts/XpGainContext';
+import { computeFileHash, submitQuest, startQuest, recommendQuestsFromImage, type QuestListItem } from '@/services/questService';
+import { suggestPoi } from '@/services/poiService';
+import { getAppLocation } from '@/services/locationService';
+import { createPost, deletePost } from '@/services/socialService';
 import { uploadImage } from '@/services/uploadService';
 import type { Post, Quest } from '@/types';
 import { StorageKeys, getItem, removeItem, setItem } from '@/utils/storage';
@@ -33,13 +36,21 @@ export default function CameraResultScreen() {
   const params = useLocalSearchParams();
   const { posts, setPosts } = usePostContext();
   const { showToast } = useToast();
+  const { showXpGain } = useXpGain();
 
   const [caption, setCaption] = useState('');
   const [location, setLocation] = useState('');
-  const [showLocation, setShowLocation] = useState(false);
   const [posting, setPosting] = useState(false);
   const [attachedQuest, setAttachedQuest] = useState<Pick<Quest, 'title' | 'xpReward'> | null>(null);
   const [attachedQuestId, setAttachedQuestId] = useState<string | null>(null);
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number; capturedAt: number } | null>(null);
+  const [poiId, setPoiId] = useState<string | null>(null);
+  const [questPoiId, setQuestPoiId] = useState<string | null>(null);
+  const attachedPoiRef = useRef<string | null>(null);
+
+  const [isQuestFlow, setIsQuestFlow] = useState(false);
+  const [isCheckingLocation, setIsCheckingLocation] = useState(false);
+  const [suggestedPoi, setSuggestedPoi] = useState<{ id: string; name: string } | null>(null);
 
   // Caching uploaded image details to prevent redundant network calls
   const [uploadedCache, setUploadedCache] = useState<{ url: string; publicId: string } | null>(null);
@@ -55,6 +66,7 @@ export default function CameraResultScreen() {
     try {
       const token = await getItem<string>(StorageKeys.accessToken);
       if (!token) return;
+      if (!imageUri) return;
 
       // 1. Phải có ảnh trên Cloudinary thì AI Backend mới phân tích được. Upload nếu chưa cache.
       let activeUpload = uploadedCache;
@@ -67,17 +79,9 @@ export default function CameraResultScreen() {
       let lat: number | undefined;
       let lng: number | undefined;
 
-      // Attempt fast GPS fetch to enable cross-referencing AI vision with physical location proximity
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          const currentPos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-          lat = currentPos.coords.latitude;
-          lng = currentPos.coords.longitude;
-        }
-      } catch {
-        console.log('Location acquisition skipped/failed for recommendations.');
-      }
+      const currentLocation = await getAppLocation({ maxAgeMs: 60 * 1000 });
+      lat = currentLocation?.latitude;
+      lng = currentLocation?.longitude;
 
       // 2. Gọi AI Backend để lọc danh sách Quest khớp cả ảnh VÀ địa lý
       const matchedQuests = await recommendQuestsFromImage(token, activeUpload.url, lat, lng);
@@ -99,79 +103,109 @@ export default function CameraResultScreen() {
       xpReward: quest.xp_reward,
     });
     setAttachedQuestId(quest.id);
+    // Không tự động gắn poi_id từ quest — user chưa confirm họ đang ở địa điểm đó.
+    // poi_id sẽ chỉ được gắn nếu user bấm chấp nhận gợi ý vị trí (suggestedPoi) từ GPS thực tế.
     setPickerVisible(false);
   };
 
-  const [isLocating, setIsLocating] = useState(false);
-
-  const handleLocateSelf = async () => {
-    setShowLocation(true);
-    setIsLocating(true);
-    setLocation('Đang lấy vị trí...');
-
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setLocation('');
-        showToast('Không có quyền truy cập vị trí.');
-        setIsLocating(false);
-        return;
-      }
-
-      // OPTIMIZATION: Fetch last known cached location for INSTANT execution
-      let currentPos = await Location.getLastKnownPositionAsync({});
-      
-      if (!currentPos) {
-        // Fallback to CELL TOWER lookup which takes ~0.5s instead of waiting 10s for satellite lock
-        currentPos = await Location.getCurrentPositionAsync({ 
-          accuracy: Location.Accuracy.Low 
-        });
-      }
-
-      const addresses = await Location.reverseGeocodeAsync({
-        latitude: currentPos.coords.latitude,
-        longitude: currentPos.coords.longitude,
-      });
-
-      if (addresses && addresses.length > 0) {
-        const a = addresses[0];
-        // Build clean descriptive location string from component parts
-        const parts = [a.name, a.street, a.district, a.city || a.region].filter(Boolean);
-        // Select best readable subset (usually top 2 items provide nice context e.g. "Quận 1, HCM")
-        const readable = parts.slice(0, 2).join(', '); 
-        setLocation(readable || 'Vị trí hiện tại');
-      } else {
-        setLocation('Vị trí hiện tại');
-      }
-    } catch (err) {
-      console.log('Geocoding failure', err);
-      setLocation('');
-    } finally {
-      setIsLocating(false);
-    }
-  };
-
-
+  const [, setIsLocating] = useState(false);
   const imageUri = typeof params.uri === 'string' ? params.uri : undefined;
 
   useEffect(() => {
-    const hydrateAttachedQuest = async () => {
-      const raw = await getItem<{
-        questId?: string;
-        title: string;
-        xp: number;
-      }>(StorageKeys.attachedQuest);
+    const init = async () => {
+      let isQuest = false;
+      let activeQuestPoiId: string | null = null;
+      
+      try {
+        const cameraMode = await getItem<string>(StorageKeys.cameraMode);
+        const raw = await getItem<{
+          questId?: string;
+          title: string;
+          xp: number;
+          poi_id?: string | null;
+          poi_name?: string | null;
+          poi_required?: boolean;
+        }>(StorageKeys.attachedQuest);
 
-      if (!raw) return;
+        if (cameraMode === 'quest' && raw) {
+          isQuest = true;
+          setIsQuestFlow(true);
+          setAttachedQuest({
+            title: raw.title,
+            xpReward: raw.xp,
+          });
+          setAttachedQuestId(raw.questId ?? null);
+          attachedPoiRef.current = raw.poi_id ?? null;
+          activeQuestPoiId = raw.poi_id ?? null;
+          setQuestPoiId(raw.poi_id ?? null);
+        }
+      } catch (err) {
+        console.log('Error hydrating attached quest', err);
+      }
 
-      setAttachedQuest({
-        title: raw.title,
-        xpReward: raw.xp,
-      });
-      setAttachedQuestId(raw.questId ?? null);
+      setIsCheckingLocation(true);
+      const startTime = Date.now();
+
+      setIsLocating(true);
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          showToast('Không có quyền truy cập vị trí.');
+          setIsLocating(false);
+          setIsCheckingLocation(false);
+          return;
+        }
+
+        const currentLocation = await getAppLocation({
+          forceRefresh: true,
+          maxAgeMs: 30 * 1000,
+          accuracy: Location.Accuracy.High,
+        });
+        if (!currentLocation) {
+          setIsCheckingLocation(false);
+          setIsLocating(false);
+          return;
+        }
+        let currentPos = {
+          coords: {
+            latitude: currentLocation.latitude,
+            longitude: currentLocation.longitude,
+            accuracy: currentLocation.accuracy,
+          },
+        };
+        setCoords({
+          latitude: currentPos.coords.latitude,
+          longitude: currentPos.coords.longitude,
+          capturedAt: currentLocation.capturedAt,
+        });
+
+        const { latitude, longitude, accuracy } = currentPos.coords;
+        const suggestion = await suggestPoi(latitude, longitude, accuracy);
+        
+        if (suggestion.poi_id && suggestion.name) {
+          if (isQuest && activeQuestPoiId) {
+            if (suggestion.poi_id === activeQuestPoiId) {
+              setPoiId(activeQuestPoiId);
+              setLocation(suggestion.name);
+            }
+          } else {
+            setSuggestedPoi({ id: suggestion.poi_id, name: suggestion.name });
+          }
+        }
+      } catch (err) {
+        console.log('POI suggestion failure', err);
+      } finally {
+        const elapsed = Date.now() - startTime;
+        const remaining = 5000 - elapsed;
+        if (remaining > 0) {
+          await new Promise((resolve) => setTimeout(resolve, remaining));
+        }
+        setIsCheckingLocation(false);
+        setIsLocating(false);
+      }
     };
 
-    void hydrateAttachedQuest();
+    void init();
   }, []);
 
   const handlePost = async () => {
@@ -208,39 +242,77 @@ export default function CameraResultScreen() {
       }
 
       let serverPost: Awaited<ReturnType<typeof createPost>>;
+      let earnedXp = 0;
 
-      // STEP 2: Determine routing logic. 
-      // Explicitly separate formal "Do task" flow from casual "Free post with tag" flow.
-      if (attachedQuestId && cameraMode === 'quest') {
+      // STEP 2: Determine routing logic.
+      // Create the social post before quest submission so a post failure can never award XP.
+      if (attachedQuestId) {
         // ── FORMAL QUEST SUBMISSION FLOW ──
-        let submission: { submission_id: string };
+        // Ensure the quest is started before submitting (covers "Try a Quest" picker flow
+        // where startQuest was never called, unlike the quest-detail → camera flow).
         try {
-          submission = await submitQuest(token, attachedQuestId, {
-            imageUrl: upload.url,
-            cloudinaryPublicId: upload.public_id,
-            fileHash: computeFileHash(imageUri),
-          });
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Lỗi không xác định';
-          throw new Error(`Submit quest thất bại: ${msg}`);
+          await startQuest(token, attachedQuestId, poiId);
+        } catch {
+          // Ignore conflict (409) — quest may already be started.
+        }
+
+        let submissionLat = coords?.latitude;
+        let submissionLng = coords?.longitude;
+
+        const coordsAreOld = !coords?.capturedAt || Date.now() - coords.capturedAt > 30 * 1000;
+        if (!submissionLat || !submissionLng || coordsAreOld) {
+          const latestLocation = await getAppLocation({ forceRefresh: true, maxAgeMs: 30 * 1000 });
+          submissionLat = latestLocation?.latitude ?? submissionLat;
+          submissionLng = latestLocation?.longitude ?? submissionLng;
         }
 
         try {
           serverPost = await createPost(token, {
-            submissionId: submission.submission_id,
-            caption: caption.trim() || undefined
+            imageUrl: upload.url,
+            questId: attachedQuestId,
+            caption: caption.trim() || undefined,
+            locationName: location.trim() || undefined,
+            poiId,
           });
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Lỗi không xác định';
           throw new Error(`Tạo post thất bại: ${msg}`);
         }
+
+        let submission: Awaited<ReturnType<typeof submitQuest>>;
+        try {
+          submission = await submitQuest(token, attachedQuestId, {
+            postId: serverPost.id,
+            imageUrl: upload.url,
+            cloudinaryPublicId: upload.public_id,
+            fileHash: computeFileHash(imageUri),
+            poiId,
+            lat: submissionLat,
+            lng: submissionLng,
+          });
+          if (submission.status === 'approved' || submission.submission_status === 'approved') {
+            earnedXp = submission.xp_granted ?? submission.xp_reward ?? attachedQuest?.xpReward ?? 0;
+          }
+        } catch (err) {
+          await deletePost(token, serverPost.id).catch(() => undefined);
+          const msg = err instanceof Error ? err.message : 'Lỗi không xác định';
+          throw new Error(`Submit quest thất bại: ${msg}`);
+        }
+
+        serverPost = {
+          ...serverPost,
+          id: submission.post_id ?? serverPost.id,
+          submission_id: submission.submission_id,
+        };
       } else {
         // ── FREE POST FLOW (Optionally attaches a reference quest tag without evaluating for formal completion) ──
         try {
           serverPost = await createPost(token, {
             imageUrl: upload.url,
             questId: attachedQuestId || undefined, // Handled smoothly by decoupled backend link
-            caption: caption.trim() || undefined
+            caption: caption.trim() || undefined,
+            locationName: location.trim() || undefined,
+            poiId,
           });
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Lỗi không xác định';
@@ -264,6 +336,7 @@ export default function CameraResultScreen() {
               title: serverPost.quest.title,
               description: serverPost.quest.description ?? undefined,
               xp_reward: serverPost.quest.xp_reward,
+              poi_name: serverPost.quest.poi_name ?? null,
             }
           : undefined,
         location: location.trim() || undefined,
@@ -274,11 +347,49 @@ export default function CameraResultScreen() {
         isSaved: false,
       };
 
-      setPosts([newPost, ...posts]);
-      void setItem(StorageKeys.newPost, newPost);
-      void removeItem(StorageKeys.attachedQuest);
-      showToast('Đăng bài thành công! 🎉');
+      const matchingPost = posts.find((post) => {
+        if (post.id === newPost.id) return true;
+        if (post.submissionId && newPost.submissionId && post.submissionId === newPost.submissionId) return true;
+        return false;
+      });
 
+      const postForFeed: Post = matchingPost
+        ? {
+            ...newPost,
+            id: matchingPost.id,
+            createdAt: matchingPost.createdAt,
+            likesCount: matchingPost.likesCount,
+            commentsCount: matchingPost.commentsCount,
+            isLiked: matchingPost.isLiked,
+            followedByMe: matchingPost.followedByMe,
+          }
+        : newPost;
+
+      setPosts((prev) => {
+        const existingIndex = prev.findIndex((post) => {
+          if (post.id === postForFeed.id) return true;
+          if (post.submissionId && postForFeed.submissionId && post.submissionId === postForFeed.submissionId) return true;
+          return false;
+        });
+        if (existingIndex !== -1) {
+          const next = [...prev];
+          next[existingIndex] = {
+            ...postForFeed,
+            id: prev[existingIndex].id,
+            createdAt: prev[existingIndex].createdAt,
+            likesCount: prev[existingIndex].likesCount,
+            commentsCount: prev[existingIndex].commentsCount,
+            isLiked: prev[existingIndex].isLiked,
+            followedByMe: prev[existingIndex].followedByMe,
+          };
+          return next;
+        }
+        return [postForFeed, ...prev];
+      });
+      void setItem(StorageKeys.newPost, postForFeed);
+      void removeItem(StorageKeys.attachedQuest);
+      showXpGain(earnedXp);
+      showToast('Đăng bài thành công! 🎉');
 
       router.replace(ROUTES.main.home);
     } catch (err: unknown) {
@@ -288,7 +399,6 @@ export default function CameraResultScreen() {
       setPosting(false);
     }
   };
-
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -317,46 +427,137 @@ export default function CameraResultScreen() {
           </View>
         </View>
 
-        <View style={styles.section}>
-          {!showLocation ? (
-            <TouchableOpacity 
-              style={styles.locationBtn} 
-              onPress={handleLocateSelf}
-              disabled={isLocating}
-            >
-              {isLocating ? (
-                <ActivityIndicator size="small" color="#6B7280" style={{ marginRight: 6 }} />
-              ) : (
-                <Ionicons name="location-outline" size={18} color="#6B7280" />
-              )}
-              <Text style={styles.locationText}>
-                {isLocating ? 'Finding location...' : 'Add location'}
-              </Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.locationInputRow}>
-              <Ionicons name="location-outline" size={18} color="#6B7280" />
-              <TextInput
-                value={location}
-                onChangeText={setLocation}
-                placeholder="Where was this taken?"
-                style={styles.locationInput}
-                autoFocus
-                editable={!isLocating}
-              />
-              <TouchableOpacity
-                onPress={() => {
-                  setShowLocation(false);
-                  setLocation('');
-                }}
-                disabled={isLocating}
-              >
-                <Ionicons name="close" size={18} color="#9CA3AF" />
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+        {isQuestFlow ? (
+          <>
+            {isCheckingLocation ? (
+              <View style={styles.section}>
+                <View style={styles.checkingBox}>
+                  <ActivityIndicator size="small" color="#4F46E5" style={{ marginRight: 8 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.checkingText}>Đang kiểm tra vị trí...</Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <>
+                {location && poiId ? (
+                  <View style={styles.section}>
+                    <View style={styles.locationInputRow}>
+                      <Ionicons name="location" size={18} color="#10B981" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.locationHint}>Đã gắn vị trí</Text>
+                        <Text style={styles.locationText}>{location}</Text>
+                      </View>
+                      {!attachedPoiRef.current ? (
+                        <TouchableOpacity onPress={() => { setPoiId(null); setLocation(''); }}>
+                          <Ionicons name="close" size={18} color="#9CA3AF" />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  </View>
+                ) : null}
 
+                {questPoiId && !poiId ? (
+                  <View style={styles.section}>
+                    <View style={styles.warningBox}>
+                      <Ionicons name="warning-outline" size={18} color="#DC2626" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.warningText}>Có vẻ bạn không ở vị trí này!</Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : null}
+              </>
+            )}
+
+            {suggestedPoi && (!poiId || poiId !== suggestedPoi.id) ? (
+              <View style={styles.section}>
+                <TouchableOpacity
+                  style={styles.suggestionBox}
+                  onPress={() => {
+                    setPoiId(suggestedPoi.id);
+                    setLocation(suggestedPoi.name);
+                    showToast('Đã gắn vị trí gợi ý!');
+                  }}
+                >
+                  <Ionicons name="location-outline" size={18} color="#10B981" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.suggestionHint}>Bạn đang ở gần đây? Bấm để gắn vị trí</Text>
+                    <Text style={styles.suggestionText}>{suggestedPoi.name}</Text>
+                  </View>
+                  <View style={styles.suggestionAction}>
+                    <Text style={styles.suggestionActionText}>Gắn</Text>
+                    <Ionicons name="add" size={14} color="#10B981" />
+                  </View>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <>
+            {isCheckingLocation ? (
+              <View style={styles.section}>
+                <View style={styles.checkingBox}>
+                  <ActivityIndicator size="small" color="#4F46E5" style={{ marginRight: 8 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.checkingText}>Đang kiểm tra vị trí...</Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <>
+                {location ? (
+                  <View style={styles.section}>
+                    <View style={styles.locationInputRow}>
+                      <Ionicons name="location" size={18} color="#10B981" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.locationHint}>{poiId ? 'Đã gắn vị trí' : 'Đã lấy vị trí hiện tại'}</Text>
+                        <Text style={styles.locationText}>{location}</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => { setPoiId(null); setLocation(''); }}>
+                        <Ionicons name="close" size={18} color="#9CA3AF" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null}
+
+                {suggestedPoi && (!poiId || poiId !== suggestedPoi.id) ? (
+                  <View style={styles.section}>
+                    <TouchableOpacity
+                      style={styles.suggestionBox}
+                      onPress={() => {
+                        setPoiId(suggestedPoi.id);
+                        setLocation(suggestedPoi.name);
+                        showToast('Đã gắn vị trí gợi ý!');
+                      }}
+                    >
+                      <Ionicons name="location-outline" size={18} color="#10B981" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.suggestionHint}>Bạn đang ở gần đây? Bấm để gắn vị trí</Text>
+                        <Text style={styles.suggestionText}>{suggestedPoi.name}</Text>
+                      </View>
+                      <View style={styles.suggestionAction}>
+                        <Text style={styles.suggestionActionText}>Gắn</Text>
+                        <Ionicons name="add" size={14} color="#10B981" />
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+
+                {!location && !suggestedPoi ? (
+                  <View style={styles.section}>
+                    <View style={styles.noLocationBox}>
+                      <Ionicons name="location-outline" size={18} color="#6B7280" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.noLocationText}>Không tìm thấy vị trí phù hợp!</Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : null}
+              </>
+            )}
+          </>
+        )}
 
         <View style={styles.section}>
           {attachedQuest ? (
@@ -511,8 +712,12 @@ const styles = StyleSheet.create({
   },
   locationText: {
     fontSize: 15,
-    color: '#6B7280',
-    marginLeft: 8,
+    color: '#11181C',
+  },
+  locationHint: {
+    fontSize: 12,
+    color: '#10B981',
+    marginBottom: 2,
   },
   locationInputRow: {
     flexDirection: 'row',
@@ -626,5 +831,89 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+  },
+  suggestionBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  suggestionHint: {
+    fontSize: 11,
+    color: '#059669',
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  suggestionText: {
+    fontSize: 14,
+    color: '#047857',
+    fontWeight: '600',
+  },
+  suggestionAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
+    gap: 2,
+  },
+  suggestionActionText: {
+    fontSize: 12,
+    color: '#047857',
+    fontWeight: '600',
+  },
+  warningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  warningText: {
+    fontSize: 14,
+    color: '#DC2626',
+    fontWeight: '600',
+  },
+  checkingBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#EEF2FF',
+    borderColor: '#C7D2FE',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  checkingText: {
+    fontSize: 14,
+    color: '#4F46E5',
+    fontWeight: '600',
+  },
+  noLocationBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#F3F4F6',
+    borderColor: '#E5E7EB',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  noLocationText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
   },
 });

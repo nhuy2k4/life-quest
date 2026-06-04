@@ -8,15 +8,8 @@ async def reset_database():
     # Dùng CASCADE để Postgres tự động xóa sạch mọi ràng buộc liên quan
     tables = [
         "recommendation_logs",
-        "quest_stats_daily",
-        "user_quest_stats",
-        "user_ai_stats",
-        "trending_scores",
         "ai_detection_logs",
-        "submission_reviews",
-        "reward_logs",
         "audit_logs",
-        "user_events",
         "xp_transactions",
         "comments",
         "likes",

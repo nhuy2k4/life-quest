@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 
+import { refreshToken } from '@/services/authService';
 import { registerPushToken } from '@/services/notificationService';
 import { clearItems, getItem, saveItem, StorageKeys } from '@/utils/storage';
 
@@ -48,12 +49,30 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
     const hydrateSession = async () => {
       const accessToken = await getItem<string>(StorageKeys.accessToken);
+      const refreshTokenValue = await getItem<string>(StorageKeys.refreshToken);
       const persistedOnboarding = await getItem<boolean>(StorageKeys.onboardingCompleted);
 
       if (!mounted) return;
 
-      // Nếu có token nhưng đã hết hạn → xóa và coi như chưa đăng nhập
+      // Nếu có token nhưng đã hết hạn → thử refresh bằng refresh_token
       if (accessToken && !isTokenValid(accessToken)) {
+        if (refreshTokenValue) {
+          try {
+            const tokenResponse = await refreshToken(refreshTokenValue);
+            await Promise.all([
+              saveItem(StorageKeys.accessToken, tokenResponse.access_token),
+              saveItem(StorageKeys.refreshToken, tokenResponse.refresh_token),
+              saveItem(StorageKeys.onboardingCompleted, tokenResponse.onboarding_completed),
+            ]);
+            setAuthenticatedState(true);
+            setOnboardingCompletedState(Boolean(tokenResponse.onboarding_completed));
+            setHydrating(false);
+            return;
+          } catch {
+            // Fall through to clear session
+          }
+        }
+
         await clearItems([StorageKeys.accessToken, StorageKeys.refreshToken, StorageKeys.pushToken, StorageKeys.onboardingCompleted]);
         setAuthenticatedState(false);
         setOnboardingCompletedState(false);

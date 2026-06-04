@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Layout } from '@/constants/layout';
 import { ROUTES } from '@/constants/routes';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { removeItem, setItem, StorageKeys } from '@/utils/storage';
 
 type BottomNavProps = {
   showNotificationDot?: boolean;
@@ -15,17 +16,23 @@ type NavItem = {
   label: string;
   path: string;
   icon: keyof typeof Ionicons.glyphMap;
+  activeIcon: keyof typeof Ionicons.glyphMap;
+  activeMatchers: string[];
 };
 
 const leftItems: NavItem[] = [
-  { icon: 'home-outline', label: 'Home', path: ROUTES.main.home },
-  { icon: 'compass-outline', label: 'Quest', path: ROUTES.main.questLog },
+  { activeIcon: 'home', activeMatchers: ['/home'], icon: 'home-outline', label: 'Home', path: ROUTES.main.home },
+  { activeIcon: 'compass', activeMatchers: ['/quest-log', '/quest-detail'], icon: 'compass-outline', label: 'Quest', path: ROUTES.main.questLog },
 ];
 
 const rightItems: NavItem[] = [
-  { icon: 'notifications-outline', label: 'Activity', path: ROUTES.main.notifications },
-  { icon: 'person-outline', label: 'Profile', path: ROUTES.main.profile },
+  { activeIcon: 'notifications', activeMatchers: ['/notifications'], icon: 'notifications-outline', label: 'Activity', path: ROUTES.main.notifications },
+  { activeIcon: 'person', activeMatchers: ['/profile', '/settings', '/other-profile'], icon: 'person-outline', label: 'Profile', path: ROUTES.main.profile },
 ];
+
+function normalizePath(path: string): string {
+  return path.replace(/\/\([^)]*\)/g, '').replace(/\/+$/, '') || '/';
+}
 
 export function BottomNav({ showNotificationDot = true }: BottomNavProps) {
   const router = useRouter();
@@ -33,11 +40,18 @@ export function BottomNav({ showNotificationDot = true }: BottomNavProps) {
   const insets = useSafeAreaInsets();
   const isDark = useColorScheme() === 'dark';
 
-  const isActive = (path: string) => pathname === path;
+  const currentPath = normalizePath(pathname);
+  const isActive = (item: NavItem) => item.activeMatchers.some((matcher) => currentPath.startsWith(matcher));
 
   const handleNavigate = (path: string) => {
-    if (isActive(path)) return;
+    if (normalizePath(path) === currentPath) return;
     router.replace(path as Href);
+  };
+
+  const handleOpenFreeCamera = async () => {
+    await setItem(StorageKeys.cameraMode, 'free');
+    await removeItem(StorageKeys.attachedQuest);
+    router.push(ROUTES.main.camera as Href);
   };
 
   return (
@@ -49,33 +63,41 @@ export function BottomNav({ showNotificationDot = true }: BottomNavProps) {
       ]}>
       <View style={styles.row}>
         {leftItems.map((item) => (
-          <Pressable key={item.path} onPress={() => handleNavigate(item.path)} style={styles.item}>
+          <Pressable
+            key={item.path}
+            onPress={() => handleNavigate(item.path)}
+            style={[styles.item, isActive(item) ? (isDark ? styles.itemActiveDark : styles.itemActiveLight) : null]}
+          >
             <Ionicons
-              name={item.icon}
+              name={isActive(item) ? item.activeIcon : item.icon}
               size={22}
-              color={isActive(item.path) ? (isDark ? '#ECEDEE' : '#11181C') : '#9CA3AF'}
+              color={isActive(item) ? (isDark ? '#ECEDEE' : '#11181C') : '#9CA3AF'}
             />
-            <Text style={[styles.itemLabel, isActive(item.path) ? styles.labelActive : styles.labelInactive]}>
+            <Text style={[styles.itemLabel, isActive(item) ? (isDark ? styles.labelActiveDark : styles.labelActive) : styles.labelInactive]}>
               {item.label}
             </Text>
           </Pressable>
         ))}
 
-        <Pressable onPress={() => router.push(ROUTES.main.camera as Href)} style={styles.fab}>
+        <Pressable onPress={handleOpenFreeCamera} style={styles.fab}>
           <Ionicons name="camera-outline" size={24} color="#fff" />
         </Pressable>
 
         {rightItems.map((item) => (
-          <Pressable key={item.path} onPress={() => handleNavigate(item.path)} style={styles.item}>
+          <Pressable
+            key={item.path}
+            onPress={() => handleNavigate(item.path)}
+            style={[styles.item, isActive(item) ? (isDark ? styles.itemActiveDark : styles.itemActiveLight) : null]}
+          >
             <View>
               <Ionicons
-                name={item.icon}
+                name={isActive(item) ? item.activeIcon : item.icon}
                 size={22}
-                color={isActive(item.path) ? (isDark ? '#ECEDEE' : '#11181C') : '#9CA3AF'}
+                color={isActive(item) ? (isDark ? '#ECEDEE' : '#11181C') : '#9CA3AF'}
               />
               {showNotificationDot && item.path.includes('notifications') ? <View style={styles.dot} /> : null}
             </View>
-            <Text style={[styles.itemLabel, isActive(item.path) ? styles.labelActive : styles.labelInactive]}>
+            <Text style={[styles.itemLabel, isActive(item) ? (isDark ? styles.labelActiveDark : styles.labelActive) : styles.labelInactive]}>
               {item.label}
             </Text>
           </Pressable>
@@ -103,16 +125,24 @@ const styles = StyleSheet.create({
   },
   item: {
     alignItems: 'center',
+    borderRadius: 14,
     gap: 2,
     minHeight: 52,
     justifyContent: 'center',
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
+  itemActiveLight: {
+    backgroundColor: '#F3F4F6',
+  },
+  itemActiveDark: {
+    backgroundColor: '#1F2937',
+  },
   itemLabel: {
     fontSize: 11,
   },
-  labelActive: { color: '#11181C' },
+  labelActive: { color: '#11181C', fontWeight: '800' },
+  labelActiveDark: { color: '#ECEDEE', fontWeight: '800' },
   labelInactive: { color: '#9CA3AF' },
   fab: {
     alignItems: 'center',

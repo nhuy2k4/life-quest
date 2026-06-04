@@ -1,107 +1,113 @@
 import uuid
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.common import PaginatedResponse
 from app.schemas.quest import QuestUserStatus
-
-
-class RecommendationReasonCode(StrEnum):
-    MATCH_CATEGORY = "match_category"
-    FIT_ACTIVITY_LEVEL = "fit_activity_level"
-    ONBOARDING_EASY = "onboarding_easy"
-    IN_PROGRESS = "in_progress"
-    HIGH_XP = "high_xp"
-    LOCATION_REQUIRED = "location_required"
-    FRIENDS_COMPLETED = "friends_completed"
-    FRESH = "fresh"
-    TRENDING = "trending"
-    EXPLORATION = "exploration"
-    NEARBY = "nearby"
-
+from app.schemas.social import PostResponse
 
 
 class RecommendationEventType(StrEnum):
-    SHOWN = "shown"
-    CLICKED = "clicked"
-    STARTED = "started"
-    COMPLETED = "completed"
-    IGNORED = "ignored"
+	SHOWN = "shown"
+	CLICKED = "clicked"
+	STARTED = "started"
+	COMPLETED = "completed"
+	IGNORED = "ignored"
+	POST_LIKED = "post_liked"
+	POST_COMMENTED = "post_commented"
+
+
+class RecommendationSectionKey(StrEnum):
+	RECOMMENDED_FOR_YOU = "recommended_for_you"
+	TRENDING_NEAR_YOU = "trending_near_you"
+	CONTINUE_YOUR_MISSIONS = "continue_your_missions"
+	EXPLORE_NEW_THINGS = "explore_new_things"
 
 
 class RecommendationScoreBreakdown(BaseModel):
-    base_score: float = 0.0
-    status_score: float = 0.0
-    category_score: float = 0.0
-    difficulty_score: float = 0.0
-    xp_score: float = 0.0
-    social_score: float = 0.0
-    freshness_score: float = 0.0
-    location_penalty: float = 0.0
-    repetition_penalty: float = 0.0
-    diversity_penalty: float = 0.0
-    rule_score: float = 0.0
-    ml_score: float = 0.0
-    final_score: float = 0.0
+	model_config = ConfigDict(populate_by_name=True)
+
+	interest: float = 0.0
+	nearby: float = 0.0
+	trending: float = 0.0
+	continue_score: float = Field(default=0.0, alias="continue")
+	affinity: float = 0.0
+	anti_repeat: float = 0.0
+	exploration: float = 0.0
+	freshness: float = 0.0
+
+
+class RecommendationDebugInfo(BaseModel):
+	sources: list[str] = Field(default_factory=list)
+	matched_categories: list[str] = Field(default_factory=list)
+	nearby_distance_m: float | None = None
+	poi_id: uuid.UUID | None = None
+	poi_name: str | None = None
+	popularity_score: float = 0.0
+	affinity_score: float = 0.0
+	was_recently_shown: bool = False
+	rank_notes: list[str] = Field(default_factory=list)
 
 
 class RecommendationQuestItem(BaseModel):
-    id: uuid.UUID
-    rendered_text: str
-    title: str
-    description: str | None = None
-    difficulty: str = "medium"
-    image_url: str | None = None
-    labels: list[str]
-    min_confidence: float
-    poi_required: bool
-    xp_reward: int
-    user_status: QuestUserStatus = "not_started"
-    recommendation_score: float
-    ml_score: float | None = None
-    reasons: list[RecommendationReasonCode] = Field(default_factory=list)
-    score_breakdown: RecommendationScoreBreakdown | None = None
+	id: uuid.UUID
+	rendered_text: str
+	title: str
+	description: str | None = None
+	difficulty: str = "medium"
+	image_url: str | None = None
+	poi_id: uuid.UUID | None = None
+	poi_name: str | None = None
+	nearby_distance_m: float | None = None
+	labels: list[str]
+	min_confidence: float
+	xp_reward: int
+	user_status: QuestUserStatus = "not_started"
+	final_score: float
+	reasons: list[str] = Field(default_factory=list)
+	score_breakdown: RecommendationScoreBreakdown
+	debug: RecommendationDebugInfo | None = None
 
 
-
-class RecommendationListResponse(PaginatedResponse[RecommendationQuestItem]):
-    request_id: uuid.UUID
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        items: list[RecommendationQuestItem],
-        total: int,
-        page: int,
-        page_size: int,
-        request_id: uuid.UUID,
-    ) -> "RecommendationListResponse":
-        has_next = (page * page_size) < total
-        return cls(
-            items=items,
-            total=total,
-            page=page,
-            page_size=page_size,
-            has_next=has_next,
-            request_id=request_id,
-        )
+class RecommendationPostItem(PostResponse):
+	final_score: float
+	reasons: list[str] = Field(default_factory=list)
 
 
-class RecommendationLogRequest(BaseModel):
-    request_id: uuid.UUID
-    quest_id: uuid.UUID
-    event: RecommendationEventType
-    rank: int | None = None
-    score: float | None = None
-    rule_score: float | None = None
-    ml_score: float | None = None
-    final_score: float | None = None
-    reasons: list[RecommendationReasonCode] = Field(default_factory=list)
-    score_breakdown: RecommendationScoreBreakdown | None = None
-    features_snapshot: dict[str, float] | None = None
+class RecommendationSection(BaseModel):
+	key: RecommendationSectionKey
+	title: str
+	item_type: str = "quest"
+	items: list[RecommendationQuestItem | RecommendationPostItem]
+
+
+class RecommendationListResponse(BaseModel):
+	request_id: uuid.UUID
+	sections: list[RecommendationSection]
+	for_you_posts: list[RecommendationPostItem]
+	explore_quests: list[RecommendationQuestItem]
+	recommended_for_you: list[RecommendationPostItem]
+	trending_near_you: list[RecommendationQuestItem]
+	continue_your_missions: list[RecommendationQuestItem]
+	explore_new_things: list[RecommendationQuestItem]
+
+
+class RecommendationEventRequest(BaseModel):
+	request_id: uuid.UUID
+	quest_id: uuid.UUID | None = None
+	post_id: uuid.UUID | None = None
+	event: RecommendationEventType
+	section: RecommendationSectionKey | None = None
+	rank: int | None = None
+	final_score: float | None = None
+	score: float | None = None
+	reasons: list[str] = Field(default_factory=list)
+	score_breakdown: RecommendationScoreBreakdown | None = None
+
+
+class RecommendationLogRequest(RecommendationEventRequest):
+	"""Deprecated compatibility payload for POST /recommendations/log."""
 
 
 class RecommendationLogResponse(BaseModel):
-    status: str = "ok"
+	status: str = "ok"

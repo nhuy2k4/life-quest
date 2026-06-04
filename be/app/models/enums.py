@@ -35,6 +35,12 @@ class SubmissionStatus(StrEnum):
     MANUAL_REVIEW = "manual_review"
 
 
+class EventStatus(StrEnum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    ENDED = "ended"
+
+
 class ActivityLevel(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
@@ -43,7 +49,9 @@ class ActivityLevel(StrEnum):
 
 class XpSource(StrEnum):
     QUEST_APPROVED = "quest_approved"
+    CONSOLATION = "consolation"
     ADMIN_ADJUST = "admin_adjust"
+    EVENT_REWARD = "event_reward"
 
 
 def sql_enum(enum_cls: type[StrEnum], name: str) -> SQLEnum:

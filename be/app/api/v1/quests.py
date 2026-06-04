@@ -45,16 +45,30 @@ async def list_quests(
 
 
 @router.get(
+	"/log",
+	response_model=PaginatedResponse[QuestListItemResponse],
+	summary="Danh sÃ¡ch quest cho Quest Log",
+)
+async def list_quest_log(
+	current_user: CurrentUser = Depends(get_current_user),
+	service: QuestService = Depends(get_quest_service),
+) -> PaginatedResponse[QuestListItemResponse]:
+	items, total = await service.list_quest_log(user_id=current_user.id)
+	return PaginatedResponse.create(items=items, total=total, page=1, page_size=max(total, 1))
+
+
+@router.get(
 	"/{quest_id}",
 	response_model=QuestDetailResponse,
 	summary="Chi tiết quest",
 )
 async def get_quest_detail(
 	quest_id: UUID,
+	poi_id: UUID | None = Query(default=None),
 	current_user: CurrentUser = Depends(get_current_user),
 	service: QuestService = Depends(get_quest_service),
 ) -> QuestDetailResponse:
-	return await service.get_quest_detail(user_id=current_user.id, quest_id=quest_id)
+	return await service.get_quest_detail(user_id=current_user.id, quest_id=quest_id, poi_id=poi_id)
 
 
 @router.post(
@@ -65,6 +79,7 @@ async def get_quest_detail(
 )
 async def start_quest(
 	quest_id: UUID,
+	poi_id: UUID | None = Query(default=None),
 	current_user: CurrentUser = Depends(get_current_user),
 	service: QuestService = Depends(get_quest_service),
 ) -> StartQuestResponse:
@@ -72,6 +87,7 @@ async def start_quest(
 		user_id=current_user.id,
 		onboarding_completed=current_user.onboarding_completed,
 		quest_id=quest_id,
+		poi_id=poi_id,
 	)
 
 

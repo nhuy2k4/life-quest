@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.deps.auth import CurrentUser, get_current_user
 from app.deps.db import get_db
 from app.schemas.recommendation import (
+	RecommendationEventRequest,
 	RecommendationListResponse,
 	RecommendationLogRequest,
 	RecommendationLogResponse,
@@ -23,6 +24,7 @@ async def get_recommended_quests(
 	page_size: int = Query(default=20, ge=1, le=100),
 	lat: float | None = Query(default=None),
 	lng: float | None = Query(default=None),
+	debug: bool = Query(default=False),
 	current_user: CurrentUser = Depends(get_current_user),
 	service: RecommendationService = Depends(get_recommendation_service),
 ) -> RecommendationListResponse:
@@ -33,8 +35,18 @@ async def get_recommended_quests(
 		page_size=page_size,
 		lat=lat,
 		lng=lng,
+		debug=debug,
 	)
 
+
+@router.post("/events", response_model=RecommendationLogResponse)
+async def log_recommendation_event_v2(
+	payload: RecommendationEventRequest,
+	current_user: CurrentUser = Depends(get_current_user),
+	service: RecommendationService = Depends(get_recommendation_service),
+) -> RecommendationLogResponse:
+	await service.log_event(user_id=current_user.id, payload=payload)
+	return RecommendationLogResponse()
 
 
 @router.post("/log", response_model=RecommendationLogResponse)

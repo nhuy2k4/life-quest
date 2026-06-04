@@ -1,4 +1,8 @@
-# ML Pipeline — Recommendation V2 (Cold Start)
+# DEPRECATED — ML Pipeline — Recommendation V2 (Cold Start)
+
+This synthetic ML pipeline is kept only as historical/future-reference material.
+The MVP/demo recommendation runtime is now explainable rule-based ranking and
+does not load `model.pkl` or use synthetic training output.
 
 ## Mục tiêu
 

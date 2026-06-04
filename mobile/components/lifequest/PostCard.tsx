@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { type Href, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CommentSheet } from '@/components/lifequest/CommentSheet';
@@ -26,20 +26,23 @@ export function PostCard({ post, attachedQuest = null }: PostCardProps) {
   const router = useRouter();
   const { setPosts, hiddenPostIds, hidePost, unhidePost } = usePostContext();
   const { showToast } = useToast();
-  const { currentUser } = useUserContext();
+  const { currentUser, setCurrentUser } = useUserContext();
   const [liked, setLiked] = useState(Boolean(post.isLiked));
   const [saved, setSaved] = useState(Boolean(post.isSaved));
-  const [isFollowing, setIsFollowing] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(Boolean(post.followedByMe));
   const [commentOpen, setCommentOpen] = useState(false);
   const [likeCount, setLikeCount] = useState(post.likesCount);
+  const [commentCount, setCommentCount] = useState(post.commentsCount);
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Derived Quest data: preferentially use backend quest model, fallback to prop
   const questData = useMemo(() => {
     if (post.quest) {
       return {
+        poiId: post.quest.poi_id,
         title: post.quest.title,
         xpReward: post.quest.xp_reward,
+        poiName: post.quest.poi_name,
       };
     }
     return attachedQuest;
@@ -51,6 +54,33 @@ export function PostCard({ post, attachedQuest = null }: PostCardProps) {
   const canFollow = currentUser?.id !== post.author.id;
   const isOwner = currentUser?.id === post.author.id;
   const isHidden = hiddenPostIds.has(post.id);
+
+  useEffect(() => {
+    setIsFollowing(Boolean(post.followedByMe));
+  }, [post.followedByMe]);
+
+  useEffect(() => {
+    setLiked(Boolean(post.isLiked));
+    setLikeCount(post.likesCount);
+  }, [post.isLiked, post.likesCount]);
+
+  useEffect(() => {
+    setCommentCount(post.commentsCount);
+  }, [post.commentsCount]);
+
+  const updateCommentCount = (count: number) => {
+    setCommentCount(count);
+    setPosts((prev) =>
+      prev.map((item) =>
+        item.id === post.id
+          ? {
+              ...item,
+              commentsCount: count,
+            }
+          : item
+      )
+    );
+  };
 
   const onToggleLike = async () => {
     const nextLiked = !liked;
@@ -97,9 +127,34 @@ export function PostCard({ post, attachedQuest = null }: PostCardProps) {
 
   const onToggleFollow = async () => {
     const nextFollowing = !isFollowing;
-    setIsFollowing(nextFollowing);
     const token = await getItem<string>(StorageKeys.accessToken);
-    if (!token) return;
+    if (!token) {
+      showToast('Báº¡n chÆ°a Ä‘Äƒng nháº­p.');
+      return;
+    }
+
+    setIsFollowing(nextFollowing);
+    setPosts((prev) =>
+      prev.map((item) =>
+        item.author.id === post.author.id
+          ? {
+              ...item,
+              followedByMe: nextFollowing,
+            }
+          : item
+      )
+    );
+    setCurrentUser(
+      currentUser
+        ? {
+            ...currentUser,
+            stats: {
+              ...currentUser.stats,
+              following: Math.max(0, currentUser.stats.following + (nextFollowing ? 1 : -1)),
+            },
+          }
+        : currentUser
+    );
 
     try {
       if (nextFollowing) {
@@ -109,6 +164,28 @@ export function PostCard({ post, attachedQuest = null }: PostCardProps) {
       }
     } catch {
       setIsFollowing((prev) => !prev);
+      setPosts((prev) =>
+        prev.map((item) =>
+          item.author.id === post.author.id
+            ? {
+                ...item,
+                followedByMe: !nextFollowing,
+              }
+            : item
+        )
+      );
+      setCurrentUser(
+        currentUser
+          ? {
+              ...currentUser,
+              stats: {
+                ...currentUser.stats,
+                following: Math.max(0, currentUser.stats.following + (nextFollowing ? -1 : 1)),
+              },
+            }
+          : currentUser
+      );
+      showToast('Follow failed.');
     }
   };
 
@@ -255,6 +332,20 @@ export function PostCard({ post, attachedQuest = null }: PostCardProps) {
               <Text style={styles.questRibbonText}>Quest</Text>
             </View>
           ) : null}
+          {post.event ? (
+            <Pressable
+              style={styles.eventRibbon}
+              onPress={() =>
+                router.push({
+                  pathname: ROUTES.modal.eventDetail as any,
+                  params: { eventId: post.event!.id },
+                })
+              }
+            >
+              <Ionicons name="trophy-outline" size={12} color="#fff" />
+              <Text style={styles.questRibbonText}>{post.event.title}</Text>
+            </Pressable>
+          ) : null}
         </Pressable>
 
         <View style={styles.actionRow}>
@@ -265,7 +356,7 @@ export function PostCard({ post, attachedQuest = null }: PostCardProps) {
             </Pressable>
             <Pressable onPress={() => setCommentOpen(true)} style={styles.actionItem}>
               <Ionicons name="chatbubble-outline" size={20} color="#11181C" />
-              <Text style={styles.actionCount}>{post.commentsCount}</Text>
+              <Text style={styles.actionCount}>{commentCount}</Text>
             </Pressable>
           </View>
         </View>
@@ -280,7 +371,14 @@ export function PostCard({ post, attachedQuest = null }: PostCardProps) {
             onPress={() => {
               const questId = post.quest?.id;
               if (questId) {
-                router.push({ pathname: ROUTES.modal.questDetail, params: { questId } });
+                router.push({
+                  pathname: ROUTES.modal.questDetail,
+                  params: {
+                    questId,
+                    poiId: post.quest?.poi_id ?? undefined,
+                    poiName: post.quest?.poi_name ?? undefined,
+                  },
+                });
               } else {
                 router.push(ROUTES.modal.questDetail);
               }
@@ -289,7 +387,17 @@ export function PostCard({ post, attachedQuest = null }: PostCardProps) {
             <Ionicons name="flash" size={14} color="#6B7280" />
             <View style={styles.questTextWrap}>
               <Text style={styles.questTitle} numberOfLines={1}>{questData.title}</Text>
-              <Text style={styles.questMeta}>{`+${questData.xpReward} XP`}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.questMeta}>{`+${questData.xpReward} XP`}</Text>
+                {post.quest?.poi_name ? (
+                  <View style={styles.questLocBadge}>
+                    <Ionicons name="location" size={10} color="#10B981" />
+                    <Text style={styles.questLocBadgeText}>
+                      {post.quest?.poi_name}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             </View>
             {questId ? (
               isQuestCompleted ? (
@@ -306,9 +414,25 @@ export function PostCard({ post, attachedQuest = null }: PostCardProps) {
           </Pressable>
         ) : null}
 
-        {post.commentsCount > 0 ? (
+        {commentCount > 0 ? (
           <Pressable style={styles.commentsButton} onPress={() => setCommentOpen(true)}>
-            <Text style={styles.commentsText}>{`View all ${post.commentsCount} comments`}</Text>
+            <Text style={styles.commentsText}>{`View all ${commentCount} comments`}</Text>
+          </Pressable>
+        ) : null}
+
+        {post.event ? (
+          <Pressable
+            style={styles.eventChip}
+            onPress={() =>
+              router.push({
+                pathname: ROUTES.modal.eventDetail as any,
+                params: { eventId: post.event!.id },
+              })
+            }
+          >
+            <Ionicons name="trophy-outline" size={14} color="#6B7280" />
+            <Text style={styles.eventChipText} numberOfLines={1}>{post.event.title}</Text>
+            <Ionicons name="chevron-forward" size={14} color="#D1D5DB" />
           </Pressable>
         ) : null}
 
@@ -318,8 +442,9 @@ export function PostCard({ post, attachedQuest = null }: PostCardProps) {
       <CommentSheet
         open={commentOpen}
         onClose={() => setCommentOpen(false)}
-        totalComments={post.commentsCount}
+        totalComments={commentCount}
         postId={post.id}
+        onCommentCountChange={updateCommentCount}
       />
 
       <Modal transparent visible={menuOpen} animationType="fade" onRequestClose={() => setMenuOpen(false)}>
@@ -427,6 +552,19 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 10,
   },
+  eventRibbon: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(17, 24, 28, 0.85)',
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: 4,
+    left: 10,
+    maxWidth: '80%',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    position: 'absolute',
+    top: 42,
+  },
   questRibbonText: {
     color: '#fff',
     fontSize: 11,
@@ -475,6 +613,25 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
+  },
+  eventChip: {
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    marginHorizontal: 12,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  eventChipText: {
+    color: '#1F2937',
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
   },
   questTextWrap: {
     flex: 1,
@@ -560,6 +717,22 @@ const styles = StyleSheet.create({
   hiddenUndoText: {
     color: '#11181C',
     fontSize: 13,
+    fontWeight: '600',
+  },
+  questLocBadge: {
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 3,
+    maxWidth: 140,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  questLocBadgeText: {
+    color: '#047857',
+    flexShrink: 1,
+    fontSize: 10,
     fontWeight: '600',
   },
 });
