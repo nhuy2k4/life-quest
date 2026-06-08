@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,18 +8,25 @@ from sqlalchemy.orm import selectinload
 from app.core.exceptions import BadRequestException, NotFoundException
 from app.core.security import hash_password
 from app.models.audit import AuditLog
-from app.models.enums import XpSource
+from app.models.enums import QuestDifficulty, SubmissionStatus, XpSource
 from app.models.auth import Level
 from app.models.badge import Badge
+from app.models.event import Event
 from app.models.poi import Poi
 from app.models.quest import Quest
 from app.models.quest import Category as QuestCategoryModel
 from app.models.social import Comment, Post
+from app.models.submission import Submission
 from app.models.user import User
+from app.models.user_quest import UserQuest
 from app.models.xp_transaction import XpTransaction
 from app.schemas.admin import (
 	AdminCategoryItem,
+	AdminDashboardStatsResponse,
+	AdminEventParticipationStat,
+	AdminPostInteractionStat,
 	AdminQuestItem,
+	AdminQuestCompletionStat,
 	AdminQuestListResponse,
 	AdminQuestUpdateRequest,
 	AdminUserItem,
@@ -162,13 +170,108 @@ class AdminService:
 		if quest is None:
 			raise NotFoundException("Quest không tồn tại")
 
-		if payload.is_active is not None:
-			quest.is_active = payload.is_active
-		if payload.xp_reward is not None:
-			quest.xp_reward = payload.xp_reward
+		data = payload.model_dump(exclude_unset=True)
+		if "difficulty" in data and data["difficulty"] is not None:
+			try:
+				data["difficulty"] = QuestDifficulty(data["difficulty"])
+			except ValueError as exc:
+				raise BadRequestException("Quest difficulty khong hop le") from exc
+		for field, value in data.items():
+			setattr(quest, field, value)
 
-		self.db.add(AuditLog(action="quest_update", target_type="quest", target_id=quest.id))
+		self.db.add(AuditLog(action="quest_update", target_type="quest", target_id=quest.id, meta=data))
 		await self.db.commit()
+
+	async def get_dashboard_stats(self) -> AdminDashboardStatsResponse:
+		now = datetime.now(timezone.utc)
+		day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+		month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+		async def quest_completion_stats(since: datetime) -> list[AdminQuestCompletionStat]:
+			rows = await self.db.execute(
+				select(
+					Quest.id,
+					Quest.title,
+					func.count(Submission.id).label("completed_count"),
+				)
+				.join(UserQuest, UserQuest.quest_id == Quest.id)
+				.join(Submission, Submission.user_quest_id == UserQuest.id)
+				.where(
+					Submission.status == SubmissionStatus.APPROVED,
+					Submission.created_at >= since,
+				)
+				.group_by(Quest.id, Quest.title)
+				.order_by(func.count(Submission.id).desc(), Quest.title.asc())
+				.limit(10)
+			)
+			return [
+				AdminQuestCompletionStat(
+					quest_id=row.id,
+					title=row.title,
+					completed_count=int(row.completed_count or 0),
+				)
+				for row in rows.all()
+			]
+
+		post_rows = await self.db.execute(
+			select(
+				Post.id,
+				Post.caption,
+				User.username,
+				Post.like_count,
+				Post.comment_count,
+				(Post.like_count + Post.comment_count).label("interaction_count"),
+				Post.created_at,
+			)
+			.join(User, Post.user_id == User.id)
+			.order_by((Post.like_count + Post.comment_count).desc(), Post.created_at.desc())
+			.limit(10)
+		)
+		top_posts = [
+			AdminPostInteractionStat(
+				post_id=row.id,
+				caption=row.caption,
+				author=row.username,
+				like_count=int(row.like_count or 0),
+				comment_count=int(row.comment_count or 0),
+				interaction_count=int(row.interaction_count or 0),
+				created_at=row.created_at,
+			)
+			for row in post_rows.all()
+		]
+
+		event_rows = await self.db.execute(
+			select(
+				Event.id,
+				Event.title,
+				Event.status,
+				Event.start_at,
+				Event.end_at,
+				func.count(func.distinct(Post.user_id)).label("participant_count"),
+			)
+			.outerjoin(Post, Post.event_id == Event.id)
+			.group_by(Event.id, Event.title, Event.status, Event.start_at, Event.end_at)
+			.order_by(func.count(func.distinct(Post.user_id)).desc(), Event.start_at.desc())
+			.limit(10)
+		)
+		top_events = [
+			AdminEventParticipationStat(
+				event_id=row.id,
+				title=row.title,
+				status=row.status.value if hasattr(row.status, "value") else str(row.status),
+				participant_count=int(row.participant_count or 0),
+				start_at=row.start_at,
+				end_at=row.end_at,
+			)
+			for row in event_rows.all()
+		]
+
+		return AdminDashboardStatsResponse(
+			quests_completed_today=await quest_completion_stats(day_start),
+			quests_completed_this_month=await quest_completion_stats(month_start),
+			top_interaction_posts=top_posts,
+			top_participation_events=top_events,
+		)
 
 	async def delete_post(self, *, post_id: uuid.UUID) -> None:
 		post = await self.db.scalar(

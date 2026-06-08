@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  FiAward, FiGrid, FiUsers, FiMap, FiLogOut, FiZap, FiMenu, FiX, FiMapPin, FiMessageSquare
+  FiAward, FiCalendar, FiGrid, FiUsers, FiMap, FiLogOut, FiZap, FiMenu, FiX, FiMapPin, FiMessageSquare
 } from 'react-icons/fi';
 import { useState } from 'react';
 
@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { to: '/users', label: 'Users', icon: FiUsers, id: 'nav-users' },
   { to: '/quests', label: 'Quests', icon: FiMap, id: 'nav-quests' },
   { to: '/posts', label: 'Posts', icon: FiMessageSquare, id: 'nav-posts' },
+  { to: '/events', label: 'Events', icon: FiCalendar, id: 'nav-events' },
   { to: '/badges', label: 'Badges', icon: FiAward, id: 'nav-badges' },
   { to: '/map', label: 'Map POI', icon: FiMapPin, id: 'nav-map' },
 ];

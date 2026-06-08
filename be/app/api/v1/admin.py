@@ -7,6 +7,7 @@ from app.deps.auth import CurrentUser, require_admin
 from app.deps.db import get_db
 from app.schemas.admin import (
 	AdminCommentActionResponse,
+	AdminDashboardStatsResponse,
 	AdminQuestListResponse,
 	AdminQuestUpdateRequest,
 	AdminPostActionResponse,
@@ -34,6 +35,14 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 
 def get_admin_service(db: AsyncSession = Depends(get_db)) -> AdminService:
 	return AdminService(db)
+
+
+@router.get("/dashboard-stats", response_model=AdminDashboardStatsResponse)
+async def get_dashboard_stats(
+	_admin: CurrentUser = Depends(require_admin),
+	service: AdminService = Depends(get_admin_service),
+) -> AdminDashboardStatsResponse:
+	return await service.get_dashboard_stats()
 
 
 @router.get("/users", response_model=AdminUserListResponse)

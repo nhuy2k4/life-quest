@@ -35,7 +35,7 @@ VITE_API_URL=https://life-quest-fxy1.onrender.com/api/v1
 After Vercel creates the frontend URL, add it to the backend service on Render:
 
 ```env
-CORS_ORIGINS=["https://life-quest-gf7wj8c1c-huys-projects-672b143e.vercel.app"]
+CORS_ORIGINS=["https://life-quest-euebv7rq3-huys-projects-672b143e.vercel.app"]
 ```
 
 If you have a custom domain, include it too:

@@ -81,8 +81,44 @@ class AdminQuestListResponse(PaginatedResponse[AdminQuestItem]):
 
 
 class AdminQuestUpdateRequest(BaseModel):
+	title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+	description: Optional[str] = None
+	difficulty: Optional[str] = Field(default=None, pattern="^(easy|medium|hard)$")
 	is_active: bool | None = None
 	xp_reward: int | None = Field(default=None, ge=0)
+	time_limit_hours: Optional[int] = Field(default=None, ge=1)
+
+
+class AdminQuestCompletionStat(BaseModel):
+	quest_id: uuid.UUID
+	title: str
+	completed_count: int
+
+
+class AdminPostInteractionStat(BaseModel):
+	post_id: uuid.UUID
+	caption: Optional[str] = None
+	author: str
+	like_count: int
+	comment_count: int
+	interaction_count: int
+	created_at: datetime
+
+
+class AdminEventParticipationStat(BaseModel):
+	event_id: uuid.UUID
+	title: str
+	status: str
+	participant_count: int
+	start_at: datetime
+	end_at: datetime
+
+
+class AdminDashboardStatsResponse(BaseModel):
+	quests_completed_today: list[AdminQuestCompletionStat]
+	quests_completed_this_month: list[AdminQuestCompletionStat]
+	top_interaction_posts: list[AdminPostInteractionStat]
+	top_participation_events: list[AdminEventParticipationStat]
 
 
 class AdminPostActionResponse(BaseModel):

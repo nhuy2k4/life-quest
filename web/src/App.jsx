@@ -8,6 +8,7 @@ import QuestsPage from './pages/QuestsPage';
 import MapPage from './pages/MapPage';
 import BadgesPage from './pages/BadgesPage';
 import PostsPage from './pages/PostsPage';
+import EventsPage from './pages/EventsPage';
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="/users" element={<UsersPage />} />
           <Route path="/quests" element={<QuestsPage />} />
           <Route path="/posts" element={<PostsPage />} />
+          <Route path="/events" element={<EventsPage />} />
           <Route path="/badges" element={<BadgesPage />} />
           <Route path="/map" element={<MapPage />} />
         </Route>
