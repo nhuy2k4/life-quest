@@ -45,4 +45,4 @@ htmlcov/
 # Others
 *.swp
 *.json
-
+!web/vercel.json
