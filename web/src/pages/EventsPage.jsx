@@ -333,122 +333,128 @@ export default function EventsPage() {
       </div>
 
       {modalMode && (
-        <Modal onClose={() => setModalMode(null)} wide>
+        <Modal onClose={() => setModalMode(null)} wide className="event-modal">
           <h3 className="modal-title">{modalMode === 'edit' ? 'Edit Event' : 'Create Event'}</h3>
-          <div className="modal-form">
-            <label>Title</label>
-            <input
-              type="text"
-              value={form.title}
-              onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))}
-            />
-
-            <label>Description</label>
-            <textarea
-              rows={3}
-              value={form.description}
-              onChange={(e) => setForm((current) => ({ ...current, description: e.target.value }))}
-            />
-
-            <label>Banner image</label>
-            <div className="event-banner-input">
-              <div className="event-banner-preview">
-                {form.banner_url ? (
-                  <img src={form.banner_url} alt="" />
-                ) : (
-                  <FiImage size={20} />
-                )}
-              </div>
-              <label className="btn-secondary event-banner-upload" title="Upload banner">
-                {uploading ? <span className="spinner-sm" /> : <FiUpload />}
-                Upload
+          <div className="modal-form event-modal-form">
+            <div className="event-form-main">
+              <div className="event-form-column">
+                <label>Title</label>
                 <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => handleBannerUpload(e.target.files?.[0])}
+                  type="text"
+                  value={form.title}
+                  onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))}
                 />
-              </label>
-            </div>
 
-            <div className="form-row">
-              <div className="form-col">
-                <label>Start</label>
-                <input
-                  type="datetime-local"
-                  value={form.start_at}
-                  onChange={(e) => setForm((current) => ({ ...current, start_at: e.target.value }))}
+                <label>Description</label>
+                <textarea
+                  rows={3}
+                  value={form.description}
+                  onChange={(e) => setForm((current) => ({ ...current, description: e.target.value }))}
                 />
-              </div>
-              <div className="form-col">
-                <label>End</label>
-                <input
-                  type="datetime-local"
-                  value={form.end_at}
-                  onChange={(e) => setForm((current) => ({ ...current, end_at: e.target.value }))}
-                />
-              </div>
-              <div className="form-col">
-                <label>Status</label>
-                <select
-                  value={form.status}
-                  onChange={(e) => setForm((current) => ({ ...current, status: e.target.value }))}
-                >
-                  {STATUS_OPTIONS.map((item) => (
-                    <option key={item} value={item}>{item}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
 
-            <label>Quest</label>
-            <div className="tag-list" style={{ maxHeight: 180, overflow: 'auto' }}>
-              {quests.map((quest) => (
-                <label key={quest.id} className="checkbox-label" style={{ width: '100%' }}>
-                  <input
-                    type="radio"
-                    name="event-quest"
-                    checked={form.quest_ids.includes(quest.id)}
-                    onChange={() => selectQuest(quest.id)}
-                  />
-                  <span className="text-truncate">{quest.title}</span>
-                </label>
-              ))}
-              {quests.length === 0 && <div className="text-muted text-sm">No quests available</div>}
-            </div>
+                <label>Banner image</label>
+                <div className="event-banner-input">
+                  <div className="event-banner-preview">
+                    {form.banner_url ? (
+                      <img src={form.banner_url} alt="" />
+                    ) : (
+                      <FiImage size={20} />
+                    )}
+                  </div>
+                  <label className="btn-secondary event-banner-upload" title="Upload banner">
+                    {uploading ? <span className="spinner-sm" /> : <FiUpload />}
+                    Upload
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleBannerUpload(e.target.files?.[0])}
+                    />
+                  </label>
+                </div>
 
-            <label>Top rewards</label>
-            <div className="event-reward-grid">
-              {XP_REWARD_RANKS.map((rank) => (
-                <div key={rank} className="event-reward-row">
-                  <div className="event-rank-label">Top {rank}</div>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="XP"
-                    value={form.reward_xp[rank]}
-                    onChange={(e) => setForm((current) => ({
-                      ...current,
-                      reward_xp: { ...current.reward_xp, [rank]: e.target.value },
-                    }))}
-                  />
-                  {BADGE_REWARD_RANKS.includes(rank) ? (
+                <div className="form-row">
+                  <div className="form-col">
+                    <label>Start</label>
+                    <input
+                      type="datetime-local"
+                      value={form.start_at}
+                      onChange={(e) => setForm((current) => ({ ...current, start_at: e.target.value }))}
+                    />
+                  </div>
+                  <div className="form-col">
+                    <label>End</label>
+                    <input
+                      type="datetime-local"
+                      value={form.end_at}
+                      onChange={(e) => setForm((current) => ({ ...current, end_at: e.target.value }))}
+                    />
+                  </div>
+                  <div className="form-col">
+                    <label>Status</label>
                     <select
-                      value={form.reward_badges[rank]}
-                      onChange={(e) => setForm((current) => ({
-                        ...current,
-                        reward_badges: { ...current.reward_badges, [rank]: e.target.value },
-                      }))}
+                      value={form.status}
+                      onChange={(e) => setForm((current) => ({ ...current, status: e.target.value }))}
                     >
-                      <option value="">No badge</option>
-                      {badges.map((badge) => (
-                        <option key={badge.id} value={badge.id}>{badge.name}</option>
+                      {STATUS_OPTIONS.map((item) => (
+                        <option key={item} value={item}>{item}</option>
                       ))}
                     </select>
-                  ) : (
-                    <div className="event-no-badge">No badge</div>
-                  )}
+                  </div>
                 </div>
-              ))}
+              </div>
+
+              <div className="event-form-column">
+                <label>Quest</label>
+                <div className="tag-list event-quest-list">
+                  {quests.map((quest) => (
+                    <label key={quest.id} className="checkbox-label" style={{ width: '100%' }}>
+                      <input
+                        type="radio"
+                        name="event-quest"
+                        checked={form.quest_ids.includes(quest.id)}
+                        onChange={() => selectQuest(quest.id)}
+                      />
+                      <span className="text-truncate">{quest.title}</span>
+                    </label>
+                  ))}
+                  {quests.length === 0 && <div className="text-muted text-sm">No quests available</div>}
+                </div>
+
+                <label>Top rewards</label>
+                <div className="event-reward-grid">
+                  {XP_REWARD_RANKS.map((rank) => (
+                    <div key={rank} className="event-reward-row">
+                      <div className="event-rank-label">Top {rank}</div>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="XP"
+                        value={form.reward_xp[rank]}
+                        onChange={(e) => setForm((current) => ({
+                          ...current,
+                          reward_xp: { ...current.reward_xp, [rank]: e.target.value },
+                        }))}
+                      />
+                      {BADGE_REWARD_RANKS.includes(rank) ? (
+                        <select
+                          value={form.reward_badges[rank]}
+                          onChange={(e) => setForm((current) => ({
+                            ...current,
+                            reward_badges: { ...current.reward_badges, [rank]: e.target.value },
+                          }))}
+                        >
+                          <option value="">No badge</option>
+                          {badges.map((badge) => (
+                            <option key={badge.id} value={badge.id}>{badge.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="event-no-badge">No badge</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 

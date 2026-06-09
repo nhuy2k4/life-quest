@@ -648,6 +648,12 @@ select option { background: var(--bg-card); }
   box-shadow: var(--shadow-md);
 }
 .modal-wide { max-width: 580px; }
+.event-modal {
+  width: min(1040px, calc(100vw - 32px));
+  max-width: min(1040px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: hidden;
+}
 .modal-close {
   position: absolute; top: 1rem; right: 1rem;
   color: var(--text-muted);
@@ -663,6 +669,22 @@ select option { background: var(--bg-card); }
 
 .modal-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 1.5rem; }
 .modal-form label { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); }
+.event-modal-form {
+  max-height: calc(100vh - 170px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.event-form-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.95fr);
+  gap: 18px;
+}
+.event-form-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
 
 .form-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
@@ -724,7 +746,7 @@ select option { background: var(--bg-card); }
   gap: 10px;
 }
 .event-banner-preview {
-  width: 112px;
+  width: 180px;
   aspect-ratio: 16 / 9;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -751,6 +773,11 @@ select option { background: var(--bg-card); }
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.event-quest-list {
+  max-height: 210px;
+  overflow: auto;
+  align-content: flex-start;
 }
 .event-reward-row {
   display: grid;
@@ -782,6 +809,21 @@ select option { background: var(--bg-card); }
   .sidebar .sidebar-toggle { margin-left: 0; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .form-row { grid-template-columns: 1fr; }
+  .event-modal {
+    width: calc(100vw - 20px);
+    max-width: calc(100vw - 20px);
+    padding: 1.25rem;
+  }
+  .event-form-main { grid-template-columns: 1fr; }
+  .event-banner-input { align-items: flex-start; }
+  .event-banner-preview { width: 140px; }
+  .event-reward-row {
+    grid-template-columns: 60px minmax(80px, 1fr);
+  }
+  .event-reward-row select,
+  .event-no-badge {
+    grid-column: 2;
+  }
 }
 
 /* ── Map Page ─────────────────────────────────────────────────────────────────────── */

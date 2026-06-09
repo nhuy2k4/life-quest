@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { FiX } from 'react-icons/fi';
 
-export default function Modal({ children, onClose, wide = false }) {
+export default function Modal({ children, onClose, wide = false, className = '' }) {
   const backdropRef = useRef(null);
 
   useEffect(() => {
@@ -18,7 +18,7 @@ export default function Modal({ children, onClose, wide = false }) {
       ref={backdropRef}
       onClick={(e) => e.target === backdropRef.current && onClose()}
     >
-      <div className={`modal-box ${wide ? 'modal-wide' : ''}`}>
+      <div className={`modal-box ${wide ? 'modal-wide' : ''} ${className}`}>
         <button className="modal-close" onClick={onClose}><FiX /></button>
         {children}
       </div>
