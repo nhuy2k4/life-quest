@@ -130,7 +130,6 @@ Chuc nang: Bang chung anh khi nop quest.
 - cloudinary_public_id (string): ID tren Cloudinary.
 - file_hash (string): Hash de anti-cheat.
 - retry_count (int): So lan nop lai.
-- exif_data (json, nullable): EXIF.
 - vision_labels (json, nullable): Label tu AI.
 - vision_raw (json, nullable): Raw response AI.
 - ai_metadata (json, nullable): Metadata AI.
@@ -145,8 +144,6 @@ Chuc nang: Bang chung anh khi nop quest.
 - status (enum): pending/processing/approved/rejected/manual_review.
 - is_suspicious (bool): Danh dau nghi ngo.
 - rejection_reason (text, nullable): Ly do tu choi.
-- prev_distance_m (float, nullable): So sanh vi tri lan truoc.
-- time_delta_s (float, nullable): Chenh lech thoi gian.
 - created_at (datetime): Thoi diem tao.
 
 ### ai_detection_logs

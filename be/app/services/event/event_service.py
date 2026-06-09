@@ -92,8 +92,7 @@ class EventService:
 
 	async def create_event(self, *, actor_id: uuid.UUID, payload: EventCreateRequest) -> EventDetailResponse:
 		self._validate_event_window(payload.start_at, payload.end_at)
-		if not payload.quest_ids:
-			raise BadRequestException("Event phai co it nhat 1 quest")
+		self._validate_single_quest(payload.quest_ids)
 
 		quests = await self._get_quests(payload.quest_ids)
 		if len(quests) != len(set(payload.quest_ids)):
@@ -145,6 +144,10 @@ class EventService:
 			event.reward_config = [tier.model_dump() for tier in payload.reward_config]
 
 		if payload.quest_ids is not None:
+			self._validate_single_quest(payload.quest_ids)
+			quests = await self._get_quests(payload.quest_ids)
+			if len(quests) != len(set(payload.quest_ids)):
+				raise NotFoundException("Quest khong ton tai")
 			await self._set_event_quests(event_id=event.id, quest_ids=payload.quest_ids)
 
 		await self.db.commit()
@@ -396,6 +399,11 @@ class EventService:
 	def _validate_event_window(start_at: datetime, end_at: datetime) -> None:
 		if end_at <= start_at:
 			raise BadRequestException("Thoi gian ket thuc phai lon hon bat dau")
+
+	@staticmethod
+	def _validate_single_quest(quest_ids: list[uuid.UUID]) -> None:
+		if len(quest_ids) != 1:
+			raise BadRequestException("Event phai co dung 1 quest")
 
 	@staticmethod
 	def _normalize_reward_config(payload: dict | list) -> list[EventRewardTier]:

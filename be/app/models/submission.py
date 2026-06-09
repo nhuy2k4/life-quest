@@ -28,7 +28,6 @@ class Submission(Base, UUIDMixin):
 	cloudinary_public_id: Mapped[str] = mapped_column(String(255), nullable=False)
 	file_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
 	retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-	exif_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 	vision_labels: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
 	vision_raw: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 	ai_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -51,8 +50,6 @@ class Submission(Base, UUIDMixin):
 	)
 	is_suspicious: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
 	rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-	prev_distance_m: Mapped[float | None] = mapped_column(Float, nullable=True)
-	time_delta_s: Mapped[float | None] = mapped_column(Float, nullable=True)
 	created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 	user_quest: Mapped["UserQuest"] = relationship("UserQuest", back_populates="submission")

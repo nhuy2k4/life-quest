@@ -3,15 +3,20 @@ import {
   FiCalendar,
   FiCheck,
   FiEdit2,
+  FiImage,
   FiPlus,
   FiSearch,
+  FiUpload,
   FiX,
 } from 'react-icons/fi';
-import { createEvent, endEvent, getEvent, listEvents, updateEvent } from '../api/events';
+import { listBadges } from '../api/badges';
+import { createEvent, endEvent, getEvent, listEvents, updateEvent, uploadEventBanner } from '../api/events';
 import { listQuests } from '../api/quests';
 import Modal from '../components/Modal';
 
 const STATUS_OPTIONS = ['draft', 'active', 'ended'];
+const XP_REWARD_RANKS = [1, 2, 3, 4, 5];
+const BADGE_REWARD_RANKS = [1, 2, 3];
 
 const emptyForm = {
   title: '',
@@ -21,6 +26,8 @@ const emptyForm = {
   end_at: '',
   status: 'draft',
   quest_ids: [],
+  reward_xp: { 1: '', 2: '', 3: '', 4: '', 5: '' },
+  reward_badges: { 1: '', 2: '', 3: '' },
 };
 
 const toDateTimeLocal = (value) => {
@@ -46,6 +53,7 @@ const fmtDate = (value) => {
 export default function EventsPage() {
   const [events, setEvents] = useState([]);
   const [quests, setQuests] = useState([]);
+  const [badges, setBadges] = useState([]);
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
@@ -53,6 +61,7 @@ export default function EventsPage() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [actionLoading, setActionLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState(null);
 
   const showToast = (msg, type = 'success') => {
@@ -72,12 +81,23 @@ export default function EventsPage() {
     }
   }, [status]);
 
-  useEffect(() => { fetchEvents(); }, [fetchEvents]);
+  useEffect(() => {
+    const run = async () => {
+      await fetchEvents();
+    };
+    run();
+  }, [fetchEvents]);
 
   useEffect(() => {
-    listQuests(1, 100)
-      .then((res) => setQuests(res.data.items || []))
-      .catch(() => setQuests([]));
+    Promise.all([listQuests(1, 100), listBadges(1, 100)])
+      .then(([questRes, badgeRes]) => {
+        setQuests(questRes.data.items || []);
+        setBadges(badgeRes.data.items || []);
+      })
+      .catch(() => {
+        setQuests([]);
+        setBadges([]);
+      });
   }, []);
 
   const filteredEvents = useMemo(() => {
@@ -100,6 +120,14 @@ export default function EventsPage() {
     try {
       const res = await getEvent(event.id);
       const detail = res.data;
+      const rewardXp = { 1: '', 2: '', 3: '', 4: '', 5: '' };
+      const rewardBadges = { 1: '', 2: '', 3: '' };
+      (detail.reward_config || []).forEach((tier) => {
+        for (let rank = tier.rank_from; rank <= tier.rank_to; rank += 1) {
+          if (XP_REWARD_RANKS.includes(rank)) rewardXp[rank] = String(tier.bonus_xp || '');
+          if (BADGE_REWARD_RANKS.includes(rank)) rewardBadges[rank] = tier.badge_id || '';
+        }
+      });
       setSelectedEvent(detail);
       setForm({
         title: detail.title || '',
@@ -109,6 +137,8 @@ export default function EventsPage() {
         end_at: toDateTimeLocal(detail.end_at),
         status: detail.status || 'draft',
         quest_ids: (detail.quests || []).map((quest) => quest.id),
+        reward_xp: rewardXp,
+        reward_badges: rewardBadges,
       });
       setModalMode('edit');
     } catch {
@@ -118,17 +148,32 @@ export default function EventsPage() {
     }
   };
 
-  const toggleQuest = (questId) => {
-    setForm((current) => {
-      const exists = current.quest_ids.includes(questId);
-      return {
-        ...current,
-        quest_ids: exists
-          ? current.quest_ids.filter((id) => id !== questId)
-          : [...current.quest_ids, questId],
-      };
-    });
+  const selectQuest = (questId) => {
+    setForm((current) => ({ ...current, quest_ids: [questId] }));
   };
+
+  const handleBannerUpload = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const res = await uploadEventBanner(file);
+      setForm((current) => ({ ...current, banner_url: res.data.url }));
+      showToast('Banner uploaded');
+    } catch {
+      showToast('Upload failed. Check Cloudinary or image file.', 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const buildRewardConfig = () => XP_REWARD_RANKS.map((rank) => ({
+    rank_from: rank,
+    rank_to: rank,
+    bonus_xp: Math.max(0, parseInt(form.reward_xp[rank], 10) || 0),
+    badge_id: BADGE_REWARD_RANKS.includes(rank) && form.reward_badges[rank]
+      ? form.reward_badges[rank]
+      : null,
+  }));
 
   const buildPayload = () => ({
     title: form.title.trim(),
@@ -137,14 +182,14 @@ export default function EventsPage() {
     start_at: fromDateTimeLocal(form.start_at),
     end_at: fromDateTimeLocal(form.end_at),
     status: form.status,
-    reward_config: [],
+    reward_config: buildRewardConfig(),
     quest_ids: form.quest_ids,
   });
 
   const handleSave = async () => {
     const payload = buildPayload();
-    if (!payload.title || !payload.start_at || !payload.end_at || payload.quest_ids.length === 0) {
-      showToast('Title, time window, and at least one quest are required', 'error');
+    if (!payload.title || !payload.banner_url || !payload.start_at || !payload.end_at || payload.quest_ids.length !== 1) {
+      showToast('Title, uploaded banner, time window, and exactly one quest are required', 'error');
       return;
     }
     setActionLoading(true);
@@ -159,8 +204,9 @@ export default function EventsPage() {
       setModalMode(null);
       setSelectedEvent(null);
       fetchEvents();
-    } catch {
-      showToast('Failed to save event', 'error');
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Failed to save event';
+      showToast(msg, 'error');
     } finally {
       setActionLoading(false);
     }
@@ -304,12 +350,25 @@ export default function EventsPage() {
               onChange={(e) => setForm((current) => ({ ...current, description: e.target.value }))}
             />
 
-            <label>Banner URL</label>
-            <input
-              type="url"
-              value={form.banner_url}
-              onChange={(e) => setForm((current) => ({ ...current, banner_url: e.target.value }))}
-            />
+            <label>Banner image</label>
+            <div className="event-banner-input">
+              <div className="event-banner-preview">
+                {form.banner_url ? (
+                  <img src={form.banner_url} alt="" />
+                ) : (
+                  <FiImage size={20} />
+                )}
+              </div>
+              <label className="btn-secondary event-banner-upload" title="Upload banner">
+                {uploading ? <span className="spinner-sm" /> : <FiUpload />}
+                Upload
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleBannerUpload(e.target.files?.[0])}
+                />
+              </label>
+            </div>
 
             <div className="form-row">
               <div className="form-col">
@@ -341,19 +400,55 @@ export default function EventsPage() {
               </div>
             </div>
 
-            <label>Quests</label>
+            <label>Quest</label>
             <div className="tag-list" style={{ maxHeight: 180, overflow: 'auto' }}>
               {quests.map((quest) => (
                 <label key={quest.id} className="checkbox-label" style={{ width: '100%' }}>
                   <input
-                    type="checkbox"
+                    type="radio"
+                    name="event-quest"
                     checked={form.quest_ids.includes(quest.id)}
-                    onChange={() => toggleQuest(quest.id)}
+                    onChange={() => selectQuest(quest.id)}
                   />
                   <span className="text-truncate">{quest.title}</span>
                 </label>
               ))}
               {quests.length === 0 && <div className="text-muted text-sm">No quests available</div>}
+            </div>
+
+            <label>Top rewards</label>
+            <div className="event-reward-grid">
+              {XP_REWARD_RANKS.map((rank) => (
+                <div key={rank} className="event-reward-row">
+                  <div className="event-rank-label">Top {rank}</div>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="XP"
+                    value={form.reward_xp[rank]}
+                    onChange={(e) => setForm((current) => ({
+                      ...current,
+                      reward_xp: { ...current.reward_xp, [rank]: e.target.value },
+                    }))}
+                  />
+                  {BADGE_REWARD_RANKS.includes(rank) ? (
+                    <select
+                      value={form.reward_badges[rank]}
+                      onChange={(e) => setForm((current) => ({
+                        ...current,
+                        reward_badges: { ...current.reward_badges, [rank]: e.target.value },
+                      }))}
+                    >
+                      <option value="">No badge</option>
+                      {badges.map((badge) => (
+                        <option key={badge.id} value={badge.id}>{badge.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="event-no-badge">No badge</div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
 
@@ -361,7 +456,7 @@ export default function EventsPage() {
             <button className="btn-secondary" onClick={() => setModalMode(null)}>
               <FiX /> Cancel
             </button>
-            <button className="btn-primary" onClick={handleSave} disabled={actionLoading}>
+            <button className="btn-primary" onClick={handleSave} disabled={actionLoading || uploading}>
               {actionLoading ? <span className="spinner-sm" /> : <FiCheck />}
               Save
             </button>

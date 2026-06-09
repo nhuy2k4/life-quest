@@ -65,7 +65,7 @@ Source: SQLAlchemy models in `be/app/models/`. This document describes the curre
 ### submissions
 
 - Purpose: quest submissions (photo + metadata).
-- Key fields: `id`, `user_quest_id` (unique), `image_url`, `cloudinary_public_id`, `file_hash`, `retry_count`, `exif_data`, `vision_labels`, `vision_raw`, `ai_metadata`, `lat`, `lng`, `location_accuracy_m`, `location_captured_at`, `poi_id`, `poi_distance_m`, `cheat_flags`, `ai_score`, `status`, `is_suspicious`, `rejection_reason`, `prev_distance_m`, `time_delta_s`, `created_at`.
+- Key fields: `id`, `user_quest_id` (unique), `image_url`, `cloudinary_public_id`, `file_hash`, `retry_count`, `vision_labels`, `vision_raw`, `ai_metadata`, `lat`, `lng`, `location_accuracy_m`, `location_captured_at`, `poi_id`, `poi_distance_m`, `cheat_flags`, `ai_score`, `status`, `is_suspicious`, `rejection_reason`, `created_at`.
 - Relations: `user_quest`, `post`, `poi`, `ai_logs`.
 
 ### posts
