@@ -144,7 +144,6 @@ class QuestRepository:
         poi_id: uuid.UUID | None,
         status: str,
         started_at: datetime,
-        expires_at: datetime | None,
     ) -> UserQuest:
         item = UserQuest(
             user_id=user_id,
@@ -152,7 +151,6 @@ class QuestRepository:
             poi_id=poi_id,
             status=status,
             started_at=started_at,
-            expires_at=expires_at,
         )
         self.db.add(item)
         await self.db.flush()
@@ -214,7 +212,6 @@ class QuestRepository:
         lat: float | None = None,
         lng: float | None = None,
         location_accuracy_m: float | None = None,
-        location_captured_at: datetime | None = None,
     ) -> Submission:
         submission = Submission(
             user_quest_id=user_quest_id,
@@ -224,7 +221,6 @@ class QuestRepository:
             lat=lat,
             lng=lng,
             location_accuracy_m=location_accuracy_m,
-            location_captured_at=location_captured_at,
             status=SubmissionStatus.PENDING,
             is_suspicious=False,
         )
@@ -316,7 +312,6 @@ class QuestRepository:
         lat: float | None = None,
         lng: float | None = None,
         location_accuracy_m: float | None = None,
-        location_captured_at: datetime | None = None,
     ) -> Submission:
         submission.image_url = image_url
         submission.cloudinary_public_id = cloudinary_public_id
@@ -324,10 +319,8 @@ class QuestRepository:
         submission.lat = lat
         submission.lng = lng
         submission.location_accuracy_m = location_accuracy_m
-        submission.location_captured_at = location_captured_at
         submission.retry_count += 1
         submission.status = SubmissionStatus.PENDING
-        submission.rejection_reason = None
         submission.is_suspicious = False
         submission.ai_score = None
         submission.cheat_flags = None

@@ -15,7 +15,6 @@ class SubmissionResponse(BaseModel):
 	image_url: str
 	status: SubmissionStatus
 	is_suspicious: bool
-	rejection_reason: str | None
 	retry_count: int
 	created_at: datetime
 
@@ -41,7 +40,6 @@ class AdminSubmissionItem(BaseModel):
 	image_url: str
 	status: SubmissionStatus
 	is_suspicious: bool
-	rejection_reason: str | None
 	retry_count: int
 	created_at: datetime
 

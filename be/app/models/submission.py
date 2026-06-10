@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -34,7 +34,6 @@ class Submission(Base, UUIDMixin):
 	lat: Mapped[float | None] = mapped_column(Float, nullable=True)
 	lng: Mapped[float | None] = mapped_column(Float, nullable=True)
 	location_accuracy_m: Mapped[float | None] = mapped_column(Float, nullable=True)
-	location_captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 	poi_id: Mapped[uuid.UUID | None] = mapped_column(
 		ForeignKey("pois.id", ondelete="SET NULL"),
 		nullable=True,
@@ -49,7 +48,6 @@ class Submission(Base, UUIDMixin):
 		index=True,
 	)
 	is_suspicious: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
-	rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 	created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 	user_quest: Mapped["UserQuest"] = relationship("UserQuest", back_populates="submission")

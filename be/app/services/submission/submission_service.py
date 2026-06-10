@@ -54,7 +54,6 @@ class SubmissionService:
 					image_url=item.image_url,
 					status=item.status,
 					is_suspicious=item.is_suspicious,
-					rejection_reason=item.rejection_reason,
 					retry_count=item.retry_count,
 					created_at=item.created_at,
 				)
@@ -74,7 +73,6 @@ class SubmissionService:
 			raise ConflictException("Submission đã bị từ chối")
 
 		submission.status = SubmissionStatus.APPROVED
-		submission.rejection_reason = None
 		submission.user_quest.status = UserQuestStatus.APPROVED
 
 		xp_granted = await self.xp_service.grant_for_submission(
@@ -120,7 +118,6 @@ class SubmissionService:
 			raise ConflictException("Submission đã được duyệt")
 
 		submission.status = SubmissionStatus.REJECTED
-		submission.rejection_reason = reason.strip()
 		submission.user_quest.status = UserQuestStatus.REJECTED
 		await self.repository.db.execute(
 			Post.__table__.update()
@@ -133,7 +130,7 @@ class SubmissionService:
 			data={
 				"submission_id": str(submission.id),
 				"quest_id": str(submission.user_quest.quest_id),
-				"reason": submission.rejection_reason,
+				"reason": reason.strip(),
 				"retry_count": submission.retry_count,
 			},
 		)

@@ -191,7 +191,6 @@ async def test_quest_status_is_scoped_by_poi(client: AsyncClient, seeded_user_an
                     poi_id=poi_a_id,
                     status=UserQuestStatus.APPROVED,
                     started_at=datetime.now(timezone.utc),
-                    expires_at=None,
                 ),
             ]
         )
@@ -245,7 +244,6 @@ async def test_quest_log_includes_completed_poi_instances(client: AsyncClient, s
                 poi_id=poi_id,
                 status=UserQuestStatus.APPROVED,
                 started_at=datetime.now(timezone.utc),
-                expires_at=None,
             )
         )
         await session.commit()
@@ -484,7 +482,6 @@ async def test_retry_rejected_submission_limited_to_three_updates(client: AsyncC
                 quest_id=quest_id,
                 status=UserQuestStatus.REJECTED,
                 started_at=datetime.now(timezone.utc),
-                expires_at=None,
             )
         )
         session.add(

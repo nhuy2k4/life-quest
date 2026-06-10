@@ -48,7 +48,6 @@ class Quest(Base, UUIDMixin, TimestampMixin):
 
 	title: Mapped[str] = mapped_column(String(255), nullable=False)
 	description: Mapped[str | None] = mapped_column(Text, nullable=True)
-	vision_spec: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 	template: Mapped[str | None] = mapped_column(String(255), nullable=True)
 	labels: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 	label_rules: Mapped[dict | None] = mapped_column(JSON, nullable=True)

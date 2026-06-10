@@ -60,7 +60,6 @@ class UserQuest(Base, UUIDMixin):
 		default=UserQuestStatus.STARTED,
 	)
 	started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-	expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 	consolation_xp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 	user: Mapped["User"] = relationship("User")

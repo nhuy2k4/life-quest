@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, JSON, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, JSON, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -21,9 +21,7 @@ class AiDetectionLog(Base, UUIDMixin):
         nullable=False,
         index=True,
     )
-    model_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
     labels: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    ocr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     confidence_stats: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     raw_response: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

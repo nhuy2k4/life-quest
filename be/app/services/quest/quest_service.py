@@ -206,12 +206,6 @@ class QuestService:
                 if user_quest
                 else None
             ),
-
-            expires_at=(
-                user_quest.expires_at
-                if user_quest
-                else None
-            ),
         )
 
     async def start_quest(
@@ -240,7 +234,6 @@ class QuestService:
                     poi_id=user_quest.poi_id,
                     status=UserQuestStatus.STARTED,
                     started_at=user_quest.started_at,
-                    expires_at=user_quest.expires_at,
                 )
             if user_quest.normalized_status in {UserQuestStatus.SUBMITTED, UserQuestStatus.APPROVED}:
                 raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c báº¯t Ä‘áº§u trÆ°á»›c Ä‘Ã³")
@@ -251,7 +244,6 @@ class QuestService:
 
             user_quest.status = UserQuestStatus.STARTED
             user_quest.started_at = now
-            user_quest.expires_at = self._compute_expires_at(now=now, time_limit_hours=quest.time_limit_hours)
             if poi_id is not None:
                 await self.repository.create_quest_instance_mapping(
                     user_id=user_id,
@@ -265,7 +257,6 @@ class QuestService:
                 poi_id=user_quest.poi_id,
                 status=UserQuestStatus.STARTED,
                 started_at=user_quest.started_at,
-                expires_at=user_quest.expires_at,
             )
 
         try:
@@ -275,7 +266,6 @@ class QuestService:
                 poi_id=poi_id,
                 status=UserQuestStatus.STARTED,
                 started_at=now,
-                expires_at=self._compute_expires_at(now=now, time_limit_hours=quest.time_limit_hours),
             )
             if poi_id is not None:
                 await self.repository.create_quest_instance_mapping(
@@ -293,7 +283,6 @@ class QuestService:
             poi_id=created.poi_id,
             status=UserQuestStatus.STARTED,
             started_at=created.started_at,
-            expires_at=created.expires_at,
         )
 
     async def submit_quest(
@@ -354,12 +343,6 @@ class QuestService:
                 if user_quest.normalized_status != UserQuestStatus.REJECTED:
                     raise BadRequestException("Tráº¡ng thÃ¡i quest khÃ´ng há»£p lá»‡ Ä‘á»ƒ ná»™p áº£nh")
 
-        expires_at = self._to_utc_aware(user_quest.expires_at)
-        if expires_at is not None and expires_at <= now:
-            user_quest.status = UserQuestStatus.REJECTED
-            await self.repository.commit()
-            raise BadRequestException("Quest Ä‘Ã£ háº¿t háº¡n ná»™p")
-
         if existing_submission is not None:
             if existing_submission.status != SubmissionStatus.REJECTED:
                 raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c ná»™p trÆ°á»›c Ä‘Ã³")
@@ -374,7 +357,6 @@ class QuestService:
                 lat=payload.lat,
                 lng=payload.lng,
                 location_accuracy_m=payload.location_accuracy_m,
-                location_captured_at=payload.location_captured_at,
             )
             existing_post = await self.repository.get_post_by_submission_for_update(
                 user_id=user_id,
@@ -440,7 +422,6 @@ class QuestService:
                 lat=payload.lat,
                 lng=payload.lng,
                 location_accuracy_m=payload.location_accuracy_m,
-                location_captured_at=payload.location_captured_at,
             )
             if payload.post_id is not None:
                 post = await self.repository.get_post_for_update(user_id=user_id, post_id=payload.post_id)
@@ -478,21 +459,6 @@ class QuestService:
             retry_count=submission.retry_count,
             max_retry_count=MAX_SUBMISSION_RETRY_COUNT,
         )
-
-    @staticmethod
-    def _compute_expires_at(*, now: datetime, time_limit_hours: int | None) -> datetime | None:
-        if time_limit_hours is None:
-            return None
-        return now + timedelta(hours=time_limit_hours)
-
-    @staticmethod
-    def _to_utc_aware(value: datetime | None) -> datetime | None:
-        """Normalize DB datetime values to UTC-aware for safe comparisons."""
-        if value is None:
-            return None
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value
 
     async def recommend_from_image(
         self,
@@ -551,4 +517,3 @@ class QuestService:
                 )
         
         return matched_items
-

@@ -44,7 +44,6 @@ class QuestDetailResponse(BaseModel):
 
 	user_status: QuestUserStatus = "not_started"
 	started_at: datetime | None = None
-	expires_at: datetime | None = None
 
 	model_config = {"from_attributes": True}
 
@@ -55,7 +54,6 @@ class StartQuestResponse(BaseModel):
 	poi_id: uuid.UUID | None = None
 	status: QuestUserStatus
 	started_at: datetime | None
-	expires_at: datetime | None
 
 
 class SubmitQuestRequest(BaseModel):
@@ -67,7 +65,6 @@ class SubmitQuestRequest(BaseModel):
 	lat: float | None = None
 	lng: float | None = None
 	location_accuracy_m: float | None = None
-	location_captured_at: datetime | None = None
 
 
 class SubmitQuestResponse(BaseModel):
@@ -86,5 +83,3 @@ class RecommendQuestFromImageRequest(BaseModel):
 	image_url: str = Field(min_length=1, max_length=1000)
 	lat: float | None = None
 	lng: float | None = None
-
-

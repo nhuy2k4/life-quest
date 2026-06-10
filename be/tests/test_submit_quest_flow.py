@@ -81,7 +81,6 @@ async def seeded_flow_data(monkeypatch):
             quest_id=quest_id,
             status="submitted",
             started_at=datetime.now(timezone.utc),
-            expires_at=None,
         )
         submission = Submission(
             id=submission_id,

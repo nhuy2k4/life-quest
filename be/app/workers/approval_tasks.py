@@ -91,7 +91,6 @@ async def _process_submission_ai(submission_id: str) -> None:
 
 		if decision.decision == ApprovalDecisionType.APPROVE:
 			submission.status = SubmissionStatus.APPROVED
-			submission.rejection_reason = None
 			submission.user_quest.status = UserQuestStatus.APPROVED
 
 			base_xp = submission.user_quest.quest.xp_reward
