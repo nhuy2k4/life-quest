@@ -12,6 +12,7 @@ from app.models.social import Comment, Like, Post
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.user_quest import UserQuest
+from app.models.event import Event
 from app.models.enums import SubmissionStatus
 
 
@@ -27,6 +28,7 @@ class UserStats:
 	xp_total: int
 	level_id: int
 	approved_submissions: int
+	events_participated: int
 
 
 class BadgeRepository:
@@ -50,6 +52,7 @@ class BadgeRepository:
 				xp_total=0,
 				level_id=1,
 				approved_submissions=0,
+				events_participated=0,
 			)
 
 		# Quests completed
@@ -91,6 +94,18 @@ class BadgeRepository:
 			)
 		)
 
+		# Events participated: số event khác nhau mà user có post được approve
+		events_participated = await self.db.scalar(
+			select(func.count(func.distinct(Post.event_id)))
+			.select_from(Post)
+			.join(Submission, Submission.id == Post.submission_id)
+			.where(
+				Post.user_id == user_id,
+				Post.event_id.is_not(None),
+				Submission.status == SubmissionStatus.APPROVED,
+			)
+		)
+
 		return UserStats(
 			quests_completed=int(quests_completed or 0),
 			posts_created=int(posts_created or 0),
@@ -100,6 +115,7 @@ class BadgeRepository:
 			xp_total=user.xp,
 			level_id=user.level_id,
 			approved_submissions=int(approved_submissions or 0),
+			events_participated=int(events_participated or 0),
 		)
 
 	# ── Badges ───────────────────────────────────────────────────────────────

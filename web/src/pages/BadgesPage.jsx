@@ -29,6 +29,7 @@ const CATEGORIES = [
   { value: 'streak', label: 'Streak' },
   { value: 'progression', label: 'Progression' },
   { value: 'trust', label: 'Trust' },
+  { value: 'event', label: 'Event' },
   { value: 'general', label: 'General' },
 ];
 

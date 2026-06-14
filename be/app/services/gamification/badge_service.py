@@ -24,6 +24,7 @@ def _compute_progress(badge: Badge, stats: UserStats) -> BadgeProgress:
 		"xp_total": stats.xp_total,
 		"level_reached": stats.level_id,
 		"approved_submissions": stats.approved_submissions,
+		"events_participated": stats.events_participated,
 	}
 
 	current = current_map.get(criteria_type, 0)

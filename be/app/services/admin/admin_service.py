@@ -415,6 +415,8 @@ class AdminService:
 			"xp_total": ("Total XP", "Unlock after earning target XP."),
 			"level_reached": ("Level reached", "Unlock after reaching target level."),
 			"approved_submissions": ("Approved submissions", "Unlock after target approved submissions."),
+			"events_participated": ("Events participated", "Unlock after joining target number of events (submitted an approved post)."),
+			"event_reward": ("Event Reward (Manual)", "Special badge for event top ranks. Does not auto-unlock. Target is ignored."),
 		}
 		return AdminBadgeConditionTypesResponse(
 			items=[

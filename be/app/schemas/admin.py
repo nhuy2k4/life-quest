@@ -163,7 +163,7 @@ class AdminCommentListResponse(PaginatedResponse[AdminCommentItem]):
 
 
 BADGE_RARITIES = {"common", "rare", "epic", "legendary"}
-BADGE_CATEGORIES = {"quests", "social", "streak", "progression", "trust", "general"}
+BADGE_CATEGORIES = {"quests", "social", "streak", "progression", "trust", "general", "event"}
 BADGE_CONDITION_TYPES = {
 	"quests_completed",
 	"posts_created",
@@ -173,6 +173,8 @@ BADGE_CONDITION_TYPES = {
 	"xp_total",
 	"level_reached",
 	"approved_submissions",
+	"events_participated",
+	"event_reward",
 }
 
 
