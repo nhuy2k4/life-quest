@@ -225,8 +225,8 @@ class QuestService:
         quest = await self.repository.get_quest_by_id(quest_id)
         if quest is None or not quest.is_active:
             raise NotFoundException("Quest khÃ´ng tá»“n táº¡i")
-		if not quest.location_required:
-			poi_id = None
+        if not quest.location_required:
+            poi_id = None
 
         now = datetime.now(timezone.utc)
         user_quest = await self.repository.get_user_quest(user_id=user_id, quest_id=quest_id, poi_id=poi_id)
