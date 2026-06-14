@@ -43,6 +43,7 @@ class QuestService:
 
         items: list[QuestListItemResponse] = []
         for quest in quests:
+            image_url = quest.image_url or image_map.get(quest.id)
             user_quest = await self.repository.get_user_quest(
                 user_id=user_id,
                 quest_id=quest.id,
@@ -52,7 +53,7 @@ class QuestService:
                 QuestListItemResponse(
                     id=quest.id,
                     poi_id=None,
-                    image_url=image_map.get(quest.id),
+                    image_url=image_url,
                     rendered_text=render_quest_text(quest.template, quest.labels, None),
                     labels=quest.labels or [],
                     min_confidence=float(quest.min_confidence or 0.5),
@@ -76,6 +77,7 @@ class QuestService:
 
         items: list[QuestListItemResponse] = []
         for quest in quests:
+            image_url = quest.image_url or image_map.get(quest.id)
             user_quest = await self.repository.get_user_quest(
                 user_id=user_id,
                 quest_id=quest.id,
@@ -86,7 +88,7 @@ class QuestService:
                     id=quest.id,
                     poi_id=None,
                     poi_name=None,
-                    image_url=image_map.get(quest.id),
+                    image_url=image_url,
                     rendered_text=render_quest_text(quest.template, quest.labels, None),
                     labels=quest.labels or [],
                     min_confidence=float(quest.min_confidence or 0.5),
@@ -105,7 +107,7 @@ class QuestService:
                     id=quest.id,
                     poi_id=user_quest.poi_id,
                     poi_name=poi_name,
-                    image_url=image_map.get(quest.id),
+                    image_url=quest.image_url or image_map.get(quest.id),
                     rendered_text=render_quest_text(quest.template, quest.labels, poi_name),
                     labels=quest.labels or [],
                     min_confidence=float(quest.min_confidence or 0.5),
@@ -152,12 +154,13 @@ class QuestService:
             quest.template,
             quest.labels,
             poi_name,
-    )
+        )
 
         image_map = await self.repository.get_top_post_images_for_quests(
             quest_ids=[quest.id],
             since=datetime.now(timezone.utc) - timedelta(days=7),
         )
+        image_url = quest.image_url or image_map.get(quest.id)
 
         base_xp = quest.xp_reward
 
@@ -179,7 +182,7 @@ class QuestService:
 
             poi_id=detail_poi_id,
             poi_name=poi_name,
-            image_url=image_map.get(quest.id),
+            image_url=image_url,
 
             rendered_text=rendered_text,
             description=quest.description,
@@ -265,7 +268,7 @@ class QuestService:
                 quest_id=quest.id,
                 poi_id=poi_id,
                 status=UserQuestStatus.STARTED,
-                started_at=now,
+                image_url = quest.image_url or image_map.get(quest.id)
             )
             if poi_id is not None:
                 await self.repository.create_quest_instance_mapping(
@@ -512,7 +515,7 @@ class QuestService:
                         min_confidence=float(quest.min_confidence or 0.5),
                         xp_reward=quest.xp_reward,
                         is_active=quest.is_active,
-                        user_status=user_quest.normalized_status if user_quest else UserQuestStatus.NOT_STARTED,
+                                        image_url=quest.image_url or image_map.get(quest.id),
                     )
                 )
         

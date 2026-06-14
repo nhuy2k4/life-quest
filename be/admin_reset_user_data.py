@@ -5,7 +5,7 @@ from app.core.database import engine
 async def reset_database():
     print("--- Starting massive User Data Reset ---")
     
-    # Dùng CASCADE để Postgres tự động xóa sạch mọi ràng buộc liên quan
+    # Chỉ xóa dữ liệu phát sinh từ user; giữ lại users và dữ liệu hệ thống.
     tables = [
         "recommendation_logs",
         "ai_detection_logs",
@@ -15,6 +15,7 @@ async def reset_database():
         "likes",
         "follows",
         "posts",
+        "user_badges",
         "submissions",
         "user_quests",
         "refresh_tokens",

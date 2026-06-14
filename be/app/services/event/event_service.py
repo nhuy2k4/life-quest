@@ -98,7 +98,7 @@ class EventService:
 		if len(quests) != len(set(payload.quest_ids)):
 			raise NotFoundException("Quest khong ton tai")
 
-		reward_config = [tier.model_dump() for tier in payload.reward_config]
+		reward_config = self._serialize_reward_config(payload.reward_config)
 		status = EventStatus(payload.status or EventStatus.DRAFT)
 
 		event = Event(
@@ -141,7 +141,7 @@ class EventService:
 		if payload.status is not None:
 			event.status = EventStatus(payload.status)
 		if payload.reward_config is not None:
-			event.reward_config = [tier.model_dump() for tier in payload.reward_config]
+			event.reward_config = self._serialize_reward_config(payload.reward_config)
 
 		if payload.quest_ids is not None:
 			self._validate_single_quest(payload.quest_ids)
@@ -413,6 +413,18 @@ class EventService:
 			items = payload.get("items") or []
 			return [EventRewardTier.model_validate(item) for item in items]
 		return []
+
+	@staticmethod
+	def _serialize_reward_config(payload: list[EventRewardTier]) -> list[dict]:
+		return [
+			{
+				"rank_from": tier.rank_from,
+				"rank_to": tier.rank_to,
+				"bonus_xp": tier.bonus_xp,
+				"badge_id": str(tier.badge_id) if tier.badge_id is not None else None,
+			}
+			for tier in payload
+		]
 
 	@staticmethod
 	def _resolve_reward(config: list[EventRewardTier], rank: int) -> EventRewardTier:

@@ -47,6 +47,7 @@ class Quest(Base, UUIDMixin, TimestampMixin):
 	__tablename__ = "quests"
 
 	title: Mapped[str] = mapped_column(String(255), nullable=False)
+	image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 	description: Mapped[str | None] = mapped_column(Text, nullable=True)
 	template: Mapped[str | None] = mapped_column(String(255), nullable=True)
 	labels: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)

@@ -64,6 +64,7 @@ class AdminCategoryItem(BaseModel):
 class AdminQuestItem(BaseModel):
 	id: uuid.UUID
 	title: str
+	image_url: Optional[str] = None
 	description: Optional[str] = None
 	difficulty: str
 	xp_reward: int
@@ -82,6 +83,7 @@ class AdminQuestListResponse(PaginatedResponse[AdminQuestItem]):
 
 class AdminQuestUpdateRequest(BaseModel):
 	title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+	image_url: Optional[str] = Field(default=None, max_length=500)
 	description: Optional[str] = None
 	difficulty: Optional[str] = Field(default=None, pattern="^(easy|medium|hard)$")
 	is_active: bool | None = None

@@ -33,10 +33,6 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     TESTING: bool = False
 
-    # ── ML Ranker ────────────────────────────────────────────────────────────
-    ML_MODEL_PATH: str = ""
-    ML_FEATURE_SCHEMA_PATH: str = ""
-
     # ── Recommendation log retention ─────────────────────────────────────────
     RECOMMENDATION_LOG_RETENTION_DAYS: int = 90
     RECOMMENDATION_LOG_CLEANUP_BATCH_SIZE: int = 5000
@@ -82,4 +78,3 @@ def get_settings() -> Settings:
 
 # Shortcut để dùng trong Depends()
 settings = get_settings()
-

@@ -149,6 +149,7 @@ class AdminService:
 			AdminQuestItem(
 				id=quest.id,
 				title=quest.title,
+				image_url=quest.image_url,
 				description=quest.description,
 				difficulty=quest.difficulty.value,
 				xp_reward=quest.xp_reward,
