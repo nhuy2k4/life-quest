@@ -13,7 +13,7 @@ type QuestCardProps = {
 export function QuestCard({ quest, onPress }: QuestCardProps) {
   return (
     <Pressable onPress={() => onPress?.(quest.id)} style={styles.card}>
-      <ImageWithFallback uri={quest.imageUrl} fallbackText="Quest image" height={180} borderRadius={12} />
+      <ImageWithFallback uri={quest.imageUrl} fallbackText={quest.title} height={180} borderRadius={12} />
 
       <View style={styles.content}>
         <Text style={styles.title}>{quest.title}</Text>

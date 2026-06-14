@@ -386,7 +386,11 @@ class RecommendationService:
 		sections: list[RecommendationSection] = []
 		for key, candidates in section_candidates.items():
 			items = [
-				self._to_item(row, debug=debug, image_url=image_map.get(row.quest.id))
+				self._to_item(
+					row,
+					debug=debug,
+					image_url=image_map.get(row.quest.id) or row.quest.image_url,
+				)
 				for row in candidates[:limit]
 			]
 			sections.append(RecommendationSection(key=key, title=SECTION_TITLES[key], item_type="quest", items=items))

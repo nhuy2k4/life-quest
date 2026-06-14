@@ -41,6 +41,7 @@ class EventService:
 		self.social_service = SocialService(db)
 
 	async def list_events(self, *, status: str | None = None) -> list[EventListItem]:
+		await self._finalize_overdue_events()
 		stmt = select(Event)
 		now = datetime.now(timezone.utc)
 
@@ -58,6 +59,17 @@ class EventService:
 		stmt = stmt.order_by(Event.start_at.desc())
 		rows = await self.db.scalars(stmt)
 		return [EventListItem.model_validate(item) for item in rows.all()]
+
+	async def _finalize_overdue_events(self) -> None:
+		now = datetime.now(timezone.utc)
+		event_ids = await self.db.scalars(
+			select(Event.id).where(
+				Event.status == EventStatus.ACTIVE,
+				Event.end_at <= now,
+			)
+		)
+		for event_id in event_ids.all():
+			await self._finalize_if_needed(event_id=event_id)
 
 	async def get_event_detail(self, *, event_id: uuid.UUID) -> EventDetailResponse:
 		await self._finalize_if_needed(event_id=event_id)
