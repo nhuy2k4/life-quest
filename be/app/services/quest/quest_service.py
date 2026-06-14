@@ -225,6 +225,8 @@ class QuestService:
         quest = await self.repository.get_quest_by_id(quest_id)
         if quest is None or not quest.is_active:
             raise NotFoundException("Quest khÃ´ng tá»“n táº¡i")
+		if not quest.location_required:
+			poi_id = None
 
         now = datetime.now(timezone.utc)
         user_quest = await self.repository.get_user_quest(user_id=user_id, quest_id=quest_id, poi_id=poi_id)
@@ -268,7 +270,7 @@ class QuestService:
                 quest_id=quest.id,
                 poi_id=poi_id,
                 status=UserQuestStatus.STARTED,
-                image_url = quest.image_url or image_map.get(quest.id)
+                started_at=now,
             )
             if poi_id is not None:
                 await self.repository.create_quest_instance_mapping(
@@ -302,16 +304,26 @@ class QuestService:
         quest = await self.repository.get_quest_by_id(quest_id)
         if quest is None or not quest.is_active:
             raise NotFoundException("Quest khÃ´ng tá»“n táº¡i")
-        if payload.poi_id is not None:
-            poi = await self.repository.get_poi_by_id(payload.poi_id)
+        normalized_poi_id = payload.poi_id if quest.location_required else None
+
+        if normalized_poi_id is not None:
+            poi = await self.repository.get_poi_by_id(normalized_poi_id)
             if poi is None:
                 raise NotFoundException("Vá»‹ trÃ­ khÃ´ng tá»“n táº¡i")
 
         user_quest = await self.repository.get_user_quest_for_update(
             user_id=user_id,
             quest_id=quest_id,
-            poi_id=payload.poi_id,
+            poi_id=normalized_poi_id,
         )
+
+        if user_quest is None and not quest.location_required:
+            user_quest = await self.repository.get_user_quest_for_update(
+                user_id=user_id,
+                quest_id=quest_id,
+                poi_id=None,
+            )
+
         now = datetime.now(timezone.utc)
         
         existing_submission = await self.repository.get_submission_by_user_quest_id(user_quest.id) if user_quest else None
@@ -329,7 +341,7 @@ class QuestService:
                     submission_id=existing_submission.id,
                     post_id=None,
                     user_quest_id=user_quest.id,
-                    poi_id=user_quest.poi_id,
+                    poi_id=user_quest.poi_id if quest.location_required else None,
                     status=user_quest.normalized_status,
                     submission_status=existing_submission.status,
                     submitted_at=existing_submission.created_at,
@@ -383,7 +395,7 @@ class QuestService:
                     existing_post.location_name = source_post.location_name
                     existing_post.poi_id = source_post.poi_id or user_quest.poi_id
                 elif existing_post.poi_id is None:
-                    existing_post.poi_id = user_quest.poi_id
+                    existing_post.poi_id = user_quest.poi_id if quest.location_required else None
                 existing_post.image_url = payload.image_url
                 existing_post.quest_id = quest.id
                 linked_post_id = existing_post.id
@@ -408,7 +420,7 @@ class QuestService:
                 submission_id=submission.id,
                 post_id=linked_post_id,
                 user_quest_id=user_quest.id,
-                poi_id=user_quest.poi_id,
+                poi_id=user_quest.poi_id if quest.location_required else None,
                 status=UserQuestStatus.SUBMITTED,
                 submission_status=SubmissionStatus.PENDING,
                 submitted_at=submission.created_at,
@@ -437,7 +449,7 @@ class QuestService:
                 post.submission_id = submission.id
                 post.quest_id = quest.id
                 if post.poi_id is None:
-                    post.poi_id = user_quest.poi_id
+                    post.poi_id = user_quest.poi_id if quest.location_required else None
                 linked_post_id = post.id
             else:
                 linked_post_id = None
@@ -455,7 +467,7 @@ class QuestService:
             submission_id=submission.id,
             post_id=linked_post_id,
             user_quest_id=user_quest.id,
-            poi_id=user_quest.poi_id,
+            poi_id=user_quest.poi_id if quest.location_required else None,
             status=UserQuestStatus.SUBMITTED,
             submission_status=SubmissionStatus.PENDING,
             submitted_at=submission.created_at,
@@ -515,7 +527,8 @@ class QuestService:
                         min_confidence=float(quest.min_confidence or 0.5),
                         xp_reward=quest.xp_reward,
                         is_active=quest.is_active,
-                                        image_url=quest.image_url or image_map.get(quest.id),
+                        image_url=quest.image_url,
+                        user_status=user_quest.normalized_status if user_quest else UserQuestStatus.NOT_STARTED,
                     )
                 )
         

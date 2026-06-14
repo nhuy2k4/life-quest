@@ -129,6 +129,7 @@ class SocialService:
 	async def create_post(self, *, user_id: uuid.UUID, payload: PostCreateRequest) -> PostResponse:
 		quest_id: uuid.UUID | None = None
 		event_id: uuid.UUID | None = None
+		quest: Quest | None = None
 
 		if payload.submission_id:
 			existing_post = await self._get_post_by_submission(
@@ -165,14 +166,17 @@ class SocialService:
 			if not payload.image_url:
 				raise BadRequestException("image_url lÃ  báº¯t buá»™c khi táº¡o post khÃ´ng cÃ³ submission")
 
-			quest = None
 			if payload.quest_id:
 				quest = await self.db.scalar(select(Quest).where(Quest.id == payload.quest_id, Quest.is_active.is_(True)))
 				if quest is None:
 					raise NotFoundException("Quest khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ bá»‹ táº¯t")
 
-			if payload.poi_id:
-				poi = await self.db.scalar(select(Poi).where(Poi.id == payload.poi_id, Poi.is_active.is_(True)))
+			effective_poi_id = payload.poi_id
+			if quest is not None and not quest.location_required:
+				effective_poi_id = None
+
+			if effective_poi_id:
+				poi = await self.db.scalar(select(Poi).where(Poi.id == effective_poi_id, Poi.is_active.is_(True)))
 				if poi is None:
 					raise NotFoundException("POI khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ bá»‹ táº¯t")
 
@@ -184,7 +188,7 @@ class SocialService:
 				location_name=payload.location_name,
 				quest_id=quest_id,
 				event_id=None,
-				poi_id=payload.poi_id,
+				poi_id=effective_poi_id,
 			)
 
 		self.db.add(post)
@@ -201,7 +205,7 @@ class SocialService:
 					return self._to_post_response(existing_post, liked_by_me=False)
 			raise ConflictException("Lỗi khi tạo post") from exc
 
-		if payload.quest_id and payload.poi_id:
+		if payload.quest_id and quest is not None and quest.location_required and payload.poi_id:
 			await self.db.execute(
 				insert(QuestInstance)
 				.values(
