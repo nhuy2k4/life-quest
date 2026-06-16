@@ -3,10 +3,12 @@ from uuid import UUID
 
 import logging
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import BadRequestException, ConflictException, ForbiddenException, NotFoundException
-from app.models.enums import SubmissionStatus, UserQuestStatus
+from app.models.enums import EventStatus, PostVisibility, SubmissionStatus, UserQuestStatus
+from app.models.event import Event, EventQuest
 from app.models.user_quest import STARTED_STATUSES
 from app.repositories.quest_repository import QuestRepository
 from app.schemas.quest import (
@@ -164,16 +166,28 @@ class QuestService:
 
         base_xp = quest.xp_reward
 
-        poi_required = bool(
-            detail_poi_id is not None
-            or quest.location_required
+        # Dynamically detect if quest belongs to any event (more reliable than the is_event column)
+        linked_event_id = await self.repository.db.scalar(
+            select(EventQuest.event_id).where(EventQuest.quest_id == quest_id).limit(1)
         )
+        is_event_quest = quest.is_event or (linked_event_id is not None)
 
-        poi_bonus_xp = (
-            round(base_xp * 0.5)
-            if poi_required
-            else 0
-        )
+        # Event quests don't use POI — only GPS check-in area is validated at submit time
+        if is_event_quest:
+            detail_poi_id = None
+            poi_name = None
+            poi_required = False
+            poi_bonus_xp = 0
+        else:
+            poi_required = bool(
+                detail_poi_id is not None
+                or quest.location_required
+            )
+            poi_bonus_xp = (
+                round(base_xp * 0.5)
+                if poi_required
+                else 0
+            )
 
         total_xp_with_poi = base_xp + poi_bonus_xp
 
@@ -197,6 +211,7 @@ class QuestService:
 
             poi_required=poi_required,
             is_active=quest.is_active,
+            is_event=is_event_quest,
 
             user_status=(
                 user_quest.normalized_status
@@ -225,10 +240,24 @@ class QuestService:
         quest = await self.repository.get_quest_by_id(quest_id)
         if quest is None or not quest.is_active:
             raise NotFoundException("Quest khÃ´ng tá»“n táº¡i")
-        if not quest.location_required:
-            poi_id = None
-
         now = datetime.now(timezone.utc)
+
+        # Check if this quest belongs to an active event
+        active_event_id = await self.repository.db.scalar(
+            select(Event.id)
+            .join(EventQuest, EventQuest.event_id == Event.id)
+            .where(
+                EventQuest.quest_id == quest_id,
+                Event.status == EventStatus.ACTIVE,
+                Event.start_at <= now,
+                Event.end_at >= now,
+            )
+            .order_by(Event.start_at.desc())
+            .limit(1)
+        )
+
+        if not quest.location_required or active_event_id:
+            poi_id = None
         user_quest = await self.repository.get_user_quest(user_id=user_id, quest_id=quest_id, poi_id=poi_id)
 
         if user_quest is not None:
@@ -240,12 +269,23 @@ class QuestService:
                     status=UserQuestStatus.STARTED,
                     started_at=user_quest.started_at,
                 )
-            if user_quest.normalized_status in {UserQuestStatus.SUBMITTED, UserQuestStatus.APPROVED}:
-                raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c báº¯t Ä‘áº§u trÆ°á»›c Ä‘Ã³")
+            if user_quest.normalized_status == UserQuestStatus.APPROVED:
+                raise ConflictException("Quest đã hoàn thành trước đó")
+            if user_quest.normalized_status == UserQuestStatus.SUBMITTED and not active_event_id:
+                raise ConflictException("Quest đã được nộp hoặc đã hoàn thành trước đó")
             if user_quest.normalized_status == UserQuestStatus.REJECTED:
                 existing_submission = await self.repository.get_submission_by_user_quest_id(user_quest.id)
-                if existing_submission is not None and existing_submission.retry_count < MAX_SUBMISSION_RETRY_COUNT:
-                    raise ConflictException("Quest Ä‘ang chá» báº¡n cáº­p nháº­t láº¡i áº£nh")
+                if existing_submission is not None and existing_submission.retry_count >= MAX_SUBMISSION_RETRY_COUNT:
+                    raise ConflictException("Bạn đã hết số lần cập nhật ảnh cho quest này")
+                # Còn lượt retry — cho phép user submit ảnh mới, trả về status REJECTED
+                # để frontend biết đây là flow retry (không cần start lại)
+                return StartQuestResponse(
+                    user_quest_id=user_quest.id,
+                    quest_id=quest.id,
+                    poi_id=user_quest.poi_id,
+                    status=UserQuestStatus.REJECTED,
+                    started_at=user_quest.started_at,
+                )
 
             user_quest.status = UserQuestStatus.STARTED
             user_quest.started_at = now
@@ -299,12 +339,37 @@ class QuestService:
         payload: SubmitQuestRequest,
     ) -> SubmitQuestResponse:
         if not onboarding_completed:
-            raise ForbiddenException("Báº¡n cáº§n hoÃ n táº¥t onboarding trÆ°á»›c khi ná»™p quest")
+            raise ForbiddenException("Báº¡n cáº§n hoÃ n táº¥t onboarding trÆ°á»c khi ná»™p quest")
 
         quest = await self.repository.get_quest_by_id(quest_id)
         if quest is None or not quest.is_active:
-            raise NotFoundException("Quest khÃ´ng tá»“n táº¡i")
-        normalized_poi_id = payload.poi_id if quest.location_required else None
+            raise NotFoundException("Quest không tồn tại")
+
+        from sqlalchemy import select
+        now = datetime.now(timezone.utc)
+        active_event_id = None
+        if payload.is_event:
+            active_event_id = await self.repository.db.scalar(
+                select(Event.id)
+                .join(EventQuest, EventQuest.event_id == Event.id)
+                .where(
+                    EventQuest.quest_id == quest.id,
+                    Event.status == EventStatus.ACTIVE,
+                    Event.start_at <= now,
+                    Event.end_at >= now,
+                )
+                .order_by(Event.start_at.desc())
+                .limit(1)
+            )
+        if active_event_id:
+            lat = payload.lat
+            lng = payload.lng
+            if lat is None or lng is None:
+                raise BadRequestException("Sự kiện yêu cầu ảnh phải có toạ độ (vị trí chụp).")
+            if not (15.90 <= lat <= 16.25 and 107.80 <= lng <= 108.35):
+                raise BadRequestException("Bạn phải chụp ảnh tại khu vực Đà Nẵng mới được tham gia sự kiện này!")
+
+        normalized_poi_id = None if active_event_id else (payload.poi_id if quest.location_required else None)
 
         if normalized_poi_id is not None:
             poi = await self.repository.get_poi_by_id(normalized_poi_id)
@@ -324,8 +389,6 @@ class QuestService:
                 poi_id=None,
             )
 
-        now = datetime.now(timezone.utc)
-        
         existing_submission = await self.repository.get_submission_by_user_quest_id(user_quest.id) if user_quest else None
 
         if user_quest is None:
@@ -350,18 +413,22 @@ class QuestService:
                 )
 
             # Náº¿u nhiá»‡m vá»¥ Ä‘Ã£ á»Ÿ tráº¡ng thÃ¡i Cuá»‘i (Ä‘Ã£ ná»™p/duyá»‡t), cháº·n khÃ´ng cho ná»™p trÃ¹ng
-            if user_quest.normalized_status in {UserQuestStatus.SUBMITTED, UserQuestStatus.APPROVED}:
+            if user_quest.normalized_status == UserQuestStatus.APPROVED:
                 raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c ná»™p hoáº·c Ä‘Ã£ hoÃ n thÃ nh trÆ°á»›c Ä‘Ã³")
-            
+            if user_quest.normalized_status == UserQuestStatus.SUBMITTED and not active_event_id:
+                raise ConflictException("Quest đã được nộp trước đó")
+
             # Náº¿u nhiá»‡m vá»¥ Ä‘ang treo hoáº·c bá»‹ reject, tá»± Ä‘á»™ng chuyá»ƒn vá» STARTED Ä‘á»ƒ cho phÃ©p ná»™p Ä‘Ã¨/má»›i
             if user_quest.normalized_status not in STARTED_STATUSES:
-                if user_quest.normalized_status != UserQuestStatus.REJECTED:
+                if user_quest.normalized_status != UserQuestStatus.REJECTED and not (active_event_id and user_quest.normalized_status == UserQuestStatus.SUBMITTED):
                     raise BadRequestException("Tráº¡ng thÃ¡i quest khÃ´ng há»£p lá»‡ Ä‘á»ƒ ná»™p áº£nh")
 
         if existing_submission is not None:
-            if existing_submission.status != SubmissionStatus.REJECTED:
+            if existing_submission.status == SubmissionStatus.APPROVED:
+                raise ConflictException("Quest đã hoàn thành trước đó")
+            if existing_submission.status != SubmissionStatus.REJECTED and not active_event_id:
                 raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c ná»™p trÆ°á»›c Ä‘Ã³")
-            if existing_submission.retry_count >= MAX_SUBMISSION_RETRY_COUNT:
+            if existing_submission.status == SubmissionStatus.REJECTED and existing_submission.retry_count >= MAX_SUBMISSION_RETRY_COUNT:
                 raise ConflictException("Báº¡n Ä‘Ã£ háº¿t sá»‘ láº§n cáº­p nháº­t áº£nh cho quest nÃ y")
 
             submission = await self.repository.update_rejected_submission_for_retry(
@@ -372,6 +439,7 @@ class QuestService:
                 lat=payload.lat,
                 lng=payload.lng,
                 location_accuracy_m=payload.location_accuracy_m,
+                increment_retry=existing_submission.status == SubmissionStatus.REJECTED,
             )
             existing_post = await self.repository.get_post_by_submission_for_update(
                 user_id=user_id,
@@ -398,12 +466,18 @@ class QuestService:
                     existing_post.poi_id = user_quest.poi_id if quest.location_required else None
                 existing_post.image_url = payload.image_url
                 existing_post.quest_id = quest.id
+                existing_post.event_id = active_event_id
+                if active_event_id:
+                    existing_post.visibility = PostVisibility.PUBLIC
                 linked_post_id = existing_post.id
                 if source_post is not None:
                     await self.repository.delete_post(source_post)
             elif incoming_post is not None:
                 incoming_post.submission_id = submission.id
                 incoming_post.quest_id = quest.id
+                incoming_post.event_id = active_event_id
+                if active_event_id:
+                    incoming_post.visibility = PostVisibility.PUBLIC
                 incoming_post.image_url = payload.image_url
                 if incoming_post.poi_id is None:
                     incoming_post.poi_id = user_quest.poi_id
@@ -448,6 +522,9 @@ class QuestService:
                     raise BadRequestException("Post khÃ´ng khá»›p vá»›i quest Ä‘ang ná»™p")
                 post.submission_id = submission.id
                 post.quest_id = quest.id
+                post.event_id = active_event_id
+                if active_event_id:
+                    post.visibility = PostVisibility.PUBLIC
                 if post.poi_id is None:
                     post.poi_id = user_quest.poi_id if quest.location_required else None
                 linked_post_id = post.id

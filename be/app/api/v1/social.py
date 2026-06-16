@@ -172,3 +172,35 @@ async def list_following(
 		page=page,
 		page_size=page_size,
 	)
+
+
+@router.get("/users/{target_user_id}/friends", response_model=FollowListResponse)
+async def list_friends(
+	target_user_id: uuid.UUID,
+	page: int = Query(default=1, ge=1),
+	page_size: int = Query(default=20, ge=1, le=100),
+	current_user: CurrentUser = Depends(get_current_user),
+	service: SocialService = Depends(get_social_service),
+) -> FollowListResponse:
+	return await service.list_friends(
+		user_id=current_user.id,
+		target_user_id=target_user_id,
+		page=page,
+		page_size=page_size,
+	)
+
+
+@router.get("/users/{target_user_id}/awards", response_model=FeedResponse)
+async def get_user_awards(
+	target_user_id: uuid.UUID,
+	page: int = Query(default=1, ge=1),
+	page_size: int = Query(default=20, ge=1, le=100),
+	current_user: CurrentUser = Depends(get_current_user),
+	service: SocialService = Depends(get_social_service),
+) -> FeedResponse:
+	return await service.get_user_awards(
+		user_id=current_user.id,
+		target_user_id=target_user_id,
+		page=page,
+		page_size=page_size,
+	)

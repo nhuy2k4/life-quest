@@ -54,6 +54,12 @@ class XpSource(StrEnum):
     EVENT_REWARD = "event_reward"
 
 
+class PostVisibility(StrEnum):
+    PUBLIC = "public"
+    FRIENDS = "friends"
+    PRIVATE = "private"
+
+
 def sql_enum(enum_cls: type[StrEnum], name: str) -> SQLEnum:
     """Create SQLAlchemy Enum that stores enum .value (lowercase tokens) in DB."""
     return SQLEnum(

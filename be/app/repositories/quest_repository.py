@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis import redis_get, redis_set
@@ -33,12 +33,18 @@ class QuestRepository:
         return list(result.scalars().all())
 
     async def list_active_quests(self, *, offset: int, limit: int) -> tuple[list[Quest], int]:
-        total_stmt = select(func.count()).select_from(Quest).where(Quest.is_active.is_(True))
+        total_stmt = (
+            select(func.count())
+            .select_from(Quest)
+            .where(Quest.is_active.is_(True))
+            .where(Quest.is_event.is_(False))
+        )
         total = await self.db.scalar(total_stmt)
 
         stmt = (
             select(Quest)
             .where(Quest.is_active.is_(True))
+            .where(Quest.is_event.is_(False))
             .order_by(Quest.created_at.desc())
             .offset(offset)
             .limit(limit)
@@ -57,7 +63,10 @@ class QuestRepository:
             .outerjoin(Poi, Poi.id == UserQuest.poi_id)
             .where(
                 UserQuest.user_id == user_id,
-                UserQuest.poi_id.is_not(None),
+                or_(
+                    UserQuest.poi_id.is_not(None),
+                    Quest.is_event.is_(True)
+                ),
                 Quest.is_active.is_(True),
             )
             .order_by(UserQuest.started_at.desc())
@@ -312,6 +321,7 @@ class QuestRepository:
         lat: float | None = None,
         lng: float | None = None,
         location_accuracy_m: float | None = None,
+        increment_retry: bool = True,
     ) -> Submission:
         submission.image_url = image_url
         submission.cloudinary_public_id = cloudinary_public_id
@@ -319,7 +329,8 @@ class QuestRepository:
         submission.lat = lat
         submission.lng = lng
         submission.location_accuracy_m = location_accuracy_m
-        submission.retry_count += 1
+        if increment_retry:
+            submission.retry_count += 1
         submission.status = SubmissionStatus.PENDING
         submission.is_suspicious = False
         submission.ai_score = None

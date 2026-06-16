@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +8,8 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import BadRequestException, ConflictException, ForbiddenException, NotFoundException
 from app.models.recommendation import RecommendationLog
-from app.models.event import Event, EventQuest
+from app.models.event import Event, EventQuest, EventResult
+from app.models.badge import Badge
 from app.models.social import Comment, Follow, Like, Post
 from app.models.quest_instance import QuestInstance
 from app.models.poi import Poi
@@ -16,7 +17,7 @@ from app.models.submission import Submission
 from app.models.user import User
 from app.models.user_quest import UserQuest
 from app.models.quest import Quest
-from app.models.enums import EventStatus, SubmissionStatus
+from app.models.enums import EventStatus, SubmissionStatus, PostVisibility
 from app.schemas.common import PaginatedResponse
 from app.schemas.social import (
 	CommentCreateRequest,
@@ -47,6 +48,28 @@ class SocialService:
 			base = base.where(Post.user_id.in_(following_subquery))
 			total_base = total_base.where(Post.user_id.in_(following_subquery))
 
+		# Apply visibility filters
+		friends_subquery = select(Follow.following_id).where(
+			Follow.follower_id == user_id,
+			Follow.following_id.in_(
+				select(Follow.follower_id).where(Follow.following_id == user_id)
+			)
+		)
+
+		visibility_filter = or_(
+			Post.visibility == PostVisibility.PUBLIC,
+			# FRIENDS: accessible if the post user is in the friends subquery, or if it's the current user's own post
+			and_(
+				Post.visibility == PostVisibility.FRIENDS,
+				or_(Post.user_id.in_(friends_subquery), Post.user_id == user_id)
+			),
+			# PRIVATE: accessible only if it's the current user's own post
+			and_(Post.visibility == PostVisibility.PRIVATE, Post.user_id == user_id),
+		)
+
+		base = base.where(visibility_filter)
+		total_base = total_base.where(visibility_filter)
+
 		total = await self.db.scalar(total_base)
 		rows = await self.db.scalars(
 			base
@@ -67,13 +90,18 @@ class SocialService:
 
 		liked_post_ids = await self._get_liked_post_ids(user_id=user_id, post_ids=[post.id for post in posts])
 		following_ids = await self._get_following_ids(user_id=user_id)
+		friend_ids = await self._get_friend_ids(user_id=user_id)
 		counts_by_post = await self._get_post_counts(post_ids=[post.id for post in posts])
+		event_result_map = await self._get_event_result_map(posts)
 		items = [
 			self._to_post_response(
 				post,
 				liked_by_me=post.id in liked_post_ids,
 				followed_by_me=post.user_id in following_ids,
+				is_friend=post.user_id in friend_ids,
 				counts=counts_by_post.get(post.id),
+				event_rank=event_result_map.get((post.user_id, post.event_id), (None, None))[0] if post.event_id else None,
+				event_badge_url=event_result_map.get((post.user_id, post.event_id), (None, None))[1] if post.event_id else None,
 			)
 			for post in posts
 		]
@@ -92,8 +120,25 @@ class SocialService:
 			Post.caption.ilike(term),
 			User.username.ilike(term),
 		)
-		base = select(Post).join(User, Post.user_id == User.id).where(filter_expr)
-		total_base = select(func.count()).select_from(Post).join(User, Post.user_id == User.id).where(filter_expr)
+		# Apply visibility filters
+		friends_subquery = select(Follow.following_id).where(
+			Follow.follower_id == user_id,
+			Follow.following_id.in_(
+				select(Follow.follower_id).where(Follow.following_id == user_id)
+			)
+		)
+
+		visibility_filter = or_(
+			Post.visibility == PostVisibility.PUBLIC,
+			and_(
+				Post.visibility == PostVisibility.FRIENDS,
+				or_(Post.user_id.in_(friends_subquery), Post.user_id == user_id)
+			),
+			and_(Post.visibility == PostVisibility.PRIVATE, Post.user_id == user_id),
+		)
+
+		base = select(Post).join(User, Post.user_id == User.id).where(filter_expr, visibility_filter)
+		total_base = select(func.count()).select_from(Post).join(User, Post.user_id == User.id).where(filter_expr, visibility_filter)
 
 		total = await self.db.scalar(total_base)
 		rows = await self.db.scalars(
@@ -114,13 +159,18 @@ class SocialService:
 
 		liked_post_ids = await self._get_liked_post_ids(user_id=user_id, post_ids=[post.id for post in posts])
 		following_ids = await self._get_following_ids(user_id=user_id)
+		friend_ids = await self._get_friend_ids(user_id=user_id)
 		counts_by_post = await self._get_post_counts(post_ids=[post.id for post in posts])
+		event_result_map = await self._get_event_result_map(posts)
 		items = [
 			self._to_post_response(
 				post,
 				liked_by_me=post.id in liked_post_ids,
 				followed_by_me=post.user_id in following_ids,
+				is_friend=post.user_id in friend_ids,
 				counts=counts_by_post.get(post.id),
+				event_rank=event_result_map.get((post.user_id, post.event_id), (None, None))[0] if post.event_id else None,
+				event_badge_url=event_result_map.get((post.user_id, post.event_id), (None, None))[1] if post.event_id else None,
 			)
 			for post in posts
 		]
@@ -150,7 +200,7 @@ class SocialService:
 			quest_id = submission.user_quest.quest_id if submission.user_quest else None
 			event_id = (
 				await self._get_active_event_id_for_quest(quest_id=quest_id)
-				if submission.status == SubmissionStatus.APPROVED
+				if payload.is_event
 				else None
 			)
 			post = Post(
@@ -161,6 +211,7 @@ class SocialService:
 				caption=payload.caption,
 				location_name=payload.location_name,
 				poi_id=payload.poi_id,
+				visibility=PostVisibility.PUBLIC if event_id else payload.visibility,
 			)
 		else:
 			if not payload.image_url:
@@ -181,14 +232,20 @@ class SocialService:
 					raise NotFoundException("POI khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ bá»‹ táº¯t")
 
 			quest_id = payload.quest_id if quest else None
+			event_id = (
+				await self._get_active_event_id_for_quest(quest_id=quest_id)
+				if payload.is_event
+				else None
+			)
 			post = Post(
 				user_id=user_id, 
 				image_url=payload.image_url, 
 				caption=payload.caption,
 				location_name=payload.location_name,
 				quest_id=quest_id,
-				event_id=None,
+				event_id=event_id,
 				poi_id=effective_poi_id,
+				visibility=PostVisibility.PUBLIC if event_id else payload.visibility,
 			)
 
 		self.db.add(post)
@@ -350,7 +407,16 @@ class SocialService:
 		if stored is None:
 			raise NotFoundException("Post không tồn tại")
 		counts = (await self._get_post_counts(post_ids=[stored.id])).get(stored.id)
-		return self._to_post_response(stored, liked_by_me=False, counts=counts)
+		friend_ids = await self._get_friend_ids(user_id=user_id)
+		following_ids = await self._get_following_ids(user_id=user_id)
+		liked_post_ids = await self._get_liked_post_ids(user_id=user_id, post_ids=[stored.id])
+		return self._to_post_response(
+			stored,
+			liked_by_me=stored.id in liked_post_ids,
+			followed_by_me=stored.user_id in following_ids,
+			is_friend=stored.user_id in friend_ids,
+			counts=counts,
+		)
 
 	async def list_comments(
 		self,
@@ -471,6 +537,21 @@ class SocialService:
 			page_size=page_size,
 		)
 
+	async def list_friends(
+		self,
+		*,
+		user_id: uuid.UUID,
+		target_user_id: uuid.UUID,
+		page: int,
+		page_size: int,
+	) -> FollowListResponse:
+		return await self._list_follow_edges(
+			mode="friends",
+			target_user_id=target_user_id,
+			page=page,
+			page_size=page_size,
+		)
+
 	async def _list_follow_edges(
 		self,
 		*,
@@ -488,7 +569,7 @@ class SocialService:
 				.where(Follow.following_id == target_user_id)
 				.order_by(Follow.created_at.desc())
 			)
-		else:
+		elif mode == "following":
 			count_stmt = select(func.count()).select_from(Follow).where(Follow.follower_id == target_user_id)
 			stmt = (
 				select(User)
@@ -496,6 +577,15 @@ class SocialService:
 				.where(Follow.follower_id == target_user_id)
 				.order_by(Follow.created_at.desc())
 			)
+		else:  # friends
+			friends_subquery = select(Follow.following_id).where(
+				Follow.follower_id == target_user_id,
+				Follow.following_id.in_(
+					select(Follow.follower_id).where(Follow.following_id == target_user_id)
+				)
+			)
+			count_stmt = select(func.count()).select_from(User).where(User.id.in_(friends_subquery))
+			stmt = select(User).where(User.id.in_(friends_subquery)).order_by(User.created_at.desc())
 
 		total = await self.db.scalar(count_stmt)
 		rows = await self.db.scalars(stmt.offset(offset).limit(page_size))
@@ -512,6 +602,17 @@ class SocialService:
 	async def _get_following_ids(self, *, user_id: uuid.UUID) -> set[uuid.UUID]:
 		rows = await self.db.execute(
 			select(Follow.following_id).where(Follow.follower_id == user_id)
+		)
+		return {row[0] for row in rows.all()}
+
+	async def _get_friend_ids(self, *, user_id: uuid.UUID) -> set[uuid.UUID]:
+		rows = await self.db.execute(
+			select(Follow.following_id).where(
+				Follow.follower_id == user_id,
+				Follow.following_id.in_(
+					select(Follow.follower_id).where(Follow.following_id == user_id)
+				)
+			)
 		)
 		return {row[0] for row in rows.all()}
 
@@ -598,6 +699,100 @@ class SocialService:
 			.where(Post.user_id == user_id, Post.submission_id == submission_id)
 		)
 
+	async def get_user_awards(
+		self,
+		*,
+		user_id: uuid.UUID,
+		target_user_id: uuid.UUID,
+		page: int,
+		page_size: int,
+	) -> FeedResponse:
+		offset = (page - 1) * page_size
+		
+		# Awards are posts linked to EventResult with rank > 0 or badge_id IS NOT NULL
+		from app.models.event import EventResult
+		
+		base = (
+			select(Post)
+			.join(EventResult, EventResult.post_id == Post.id)
+			.where(
+				EventResult.user_id == target_user_id,
+				or_(EventResult.rank > 0, EventResult.badge_id.is_not(None))
+			)
+		)
+		
+		total_base = (
+			select(func.count())
+			.select_from(Post)
+			.join(EventResult, EventResult.post_id == Post.id)
+			.where(
+				EventResult.user_id == target_user_id,
+				or_(EventResult.rank > 0, EventResult.badge_id.is_not(None))
+			)
+		)
+
+		# Apply visibility filter
+		friends_subquery = select(Follow.following_id).where(
+			Follow.follower_id == user_id,
+			Follow.following_id.in_(
+				select(Follow.follower_id).where(Follow.following_id == user_id)
+			)
+		)
+
+		visibility_filter = or_(
+			Post.visibility == PostVisibility.PUBLIC,
+			and_(
+				Post.visibility == PostVisibility.FRIENDS,
+				or_(Post.user_id.in_(friends_subquery), Post.user_id == user_id)
+			),
+			and_(Post.visibility == PostVisibility.PRIVATE, Post.user_id == user_id),
+		)
+
+		base = base.where(visibility_filter)
+		total_base = total_base.where(visibility_filter)
+
+		total = await self.db.scalar(total_base)
+		rows = await self.db.scalars(
+			base
+			.options(
+				selectinload(Post.user),
+				selectinload(Post.submission).selectinload(Submission.poi),
+				selectinload(Post.submission).selectinload(Submission.user_quest).selectinload(UserQuest.quest),
+				selectinload(Post.quest),
+				selectinload(Post.poi),
+				selectinload(Post.event),
+			)
+			.order_by(EventResult.created_at.desc())
+			.offset(offset)
+			.limit(page_size)
+		)
+		posts = rows.all()
+
+		liked_post_ids = await self._get_liked_post_ids(user_id=user_id, post_ids=[post.id for post in posts])
+		following_ids = await self._get_following_ids(user_id=user_id)
+		friend_ids = await self._get_friend_ids(user_id=user_id)
+		counts_by_post = await self._get_post_counts(post_ids=[post.id for post in posts])
+		event_result_map = await self._get_event_result_map(posts)
+		items = [
+			self._to_post_response(
+				post,
+				liked_by_me=post.id in liked_post_ids,
+				followed_by_me=post.user_id in following_ids,
+				is_friend=post.user_id in friend_ids,
+				counts=counts_by_post.get(post.id),
+				event_rank=event_result_map.get((post.user_id, post.event_id), (None, None))[0] if post.event_id else None,
+				event_badge_url=event_result_map.get((post.user_id, post.event_id), (None, None))[1] if post.event_id else None,
+			)
+			for post in posts
+		]
+
+		return FeedResponse.create(
+			items=items,
+			total=int(total or 0),
+			page=page,
+			page_size=page_size,
+		)
+
 	async def _get_active_event_id_for_quest(self, *, quest_id: uuid.UUID | None) -> uuid.UUID | None:
 		if quest_id is None:
 			return None
@@ -616,13 +811,31 @@ class SocialService:
 		)
 		return event_id
 
+	async def _get_event_result_map(self, posts: list[Post]) -> dict[tuple[uuid.UUID, uuid.UUID], tuple[int | None, str | None]]:
+		"""Fetch EventResult+Badge for all event posts in one query. Returns {(user_id, event_id): (rank, badge_url)}."""
+		event_ids = {post.event_id for post in posts if post.event_id is not None}
+		if not event_ids:
+			return {}
+		result_rows = await self.db.execute(
+			select(EventResult, Badge)
+			.outerjoin(Badge, Badge.id == EventResult.badge_id)
+			.where(EventResult.event_id.in_(event_ids))
+		)
+		return {
+			(er.user_id, er.event_id): (er.rank, badge.icon_url if badge else None)
+			for er, badge in result_rows.all()
+		}
+
 	@staticmethod
 	def _to_post_response(
 		post: Post,
 		*,
 		liked_by_me: bool,
 		followed_by_me: bool = False,
+		is_friend: bool = False,
 		counts: tuple[int, int] | None = None,
+		event_rank: int | None = None,
+		event_badge_url: str | None = None,
 	) -> PostResponse:
 		submission_image_url = post.image_url or (post.submission.image_url if post.submission else None)
 		submission_poi_name = post.submission.poi.name if post.submission and post.submission.poi else None
@@ -681,7 +894,11 @@ class SocialService:
 			comment_count=comment_count,
 			liked_by_me=liked_by_me,
 			followed_by_me=followed_by_me,
+			is_friend=is_friend,
+			visibility=post.visibility,
 			created_at=post.created_at,
+			event_rank=event_rank,
+			event_badge_url=event_badge_url,
 		)
 
 	@staticmethod

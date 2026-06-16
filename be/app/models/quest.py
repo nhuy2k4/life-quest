@@ -63,6 +63,7 @@ class Quest(Base, UUIDMixin, TimestampMixin):
 	time_limit_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
 	location_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 	is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+	is_event: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 	categories: Mapped[list["Category"]] = relationship(
 		"Category",

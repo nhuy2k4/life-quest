@@ -18,7 +18,7 @@ import { usePostContext } from '@/contexts/PostContext';
 import { useUserContext } from '@/contexts/UserContext';
 import type { BadgeItem } from '@/types/badge';
 
-type TabId = 'photos' | 'liked' | 'achievements';
+type TabId = 'photos' | 'liked' | 'awards' | 'achievements';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -37,6 +37,10 @@ export default function ProfileScreen() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [rarityFilter, setRarityFilter] = useState<RarityFilter>('all');
   const [selectedBadge, setSelectedBadge] = useState<BadgeItem | null>(null);
+  
+  const [awards, setAwards] = useState<Post[]>([]);
+  const [isLoadingAwards, setIsLoadingAwards] = useState(false);
+
   const profile = currentUser;
 
   const myPhotos = profile ? posts.filter((p) => p.author.id === profile.id) : [];
@@ -72,9 +76,29 @@ export default function ProfileScreen() {
       if (tab === 'achievements') {
         void refreshBadges();
       }
+      if (tab === 'awards') {
+        loadAwards();
+      }
     },
     [hasUnviewedBadge, markBadgesViewed, refreshBadges]
   );
+
+  const loadAwards = async () => {
+    if (!profile) return;
+    setIsLoadingAwards(true);
+    try {
+      const { getItem, StorageKeys } = await import('@/utils/storage');
+      const token = await getItem<string>(StorageKeys.accessToken);
+      if (!token) return;
+      const { getUserAwards } = await import('@/services/socialService');
+      const res = await getUserAwards(token, profile.id, 1, 100);
+      setAwards(res.items);
+    } catch (err) {
+      console.error('Failed to load awards', err);
+    } finally {
+      setIsLoadingAwards(false);
+    }
+  };
 
   if (isLoadingCurrentUser && !currentUser) {
     return (
@@ -144,6 +168,10 @@ export default function ProfileScreen() {
             <Ionicons name="heart-outline" size={18} color={activeTab === 'liked' ? '#11181C' : '#9CA3AF'} />
             <View style={[styles.tabIndicator, activeTab === 'liked' ? styles.tabIndicatorActive : null]} />
           </Pressable>
+          <Pressable style={styles.tabButton} onPress={() => handleTabChange('awards')}>
+            <Ionicons name="medal-outline" size={18} color={activeTab === 'awards' ? '#F59E0B' : '#9CA3AF'} />
+            <View style={[styles.tabIndicator, activeTab === 'awards' ? styles.tabIndicatorActive : null]} />
+          </Pressable>
           <Pressable style={styles.tabButton} onPress={() => handleTabChange('achievements')}>
             <View style={styles.tabIconWrap}>
               <Ionicons name="ribbon-outline" size={18} color={activeTab === 'achievements' ? '#6366F1' : '#9CA3AF'} />
@@ -196,6 +224,37 @@ export default function ProfileScreen() {
           <View style={styles.emptyTab}>
             <Ionicons name="heart-outline" size={32} color="#D1D5DB" />
             <Text style={styles.emptyTabText}>Chưa thích bài nào</Text>
+          </View>
+        ) : null}
+
+        {/* Awards Tab */}
+        {activeTab === 'awards' && isLoadingAwards ? (
+          <View style={styles.emptyTab}>
+            <ActivityIndicator size="small" color="#F59E0B" />
+          </View>
+        ) : null}
+
+        {activeTab === 'awards' && !isLoadingAwards && awards.length > 0 ? (
+          <View style={styles.grid}>
+            {awards.map((post) => (
+              <Pressable
+                key={post.id}
+                style={{ width: '33.33%' }}
+                onPress={() => router.push({ pathname: ROUTES.modal.postDetail as any, params: { postId: post.id } })}
+              >
+                <ImageWithFallback uri={post.imageUrl || ''} width="100%" height={132} borderRadius={0} fallbackText="Award" />
+                <View style={{ position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12, padding: 4 }}>
+                  <Ionicons name="medal" size={16} color="#F59E0B" />
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
+        {activeTab === 'awards' && !isLoadingAwards && awards.length === 0 ? (
+          <View style={styles.emptyTab}>
+            <Ionicons name="medal-outline" size={32} color="#D1D5DB" />
+            <Text style={styles.emptyTabText}>Chưa có bài nào đoạt giải</Text>
           </View>
         ) : null}
 

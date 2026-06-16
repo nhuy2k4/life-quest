@@ -91,10 +91,11 @@ async def adjust_user_xp(
 async def list_quests(
 	page: int = Query(default=1, ge=1),
 	page_size: int = Query(default=20, ge=1, le=100),
+	is_event: bool | None = Query(default=None),
 	_admin: CurrentUser = Depends(require_admin),
 	service: AdminService = Depends(get_admin_service),
 ) -> AdminQuestListResponse:
-	return await service.list_quests(page=page, page_size=page_size)
+	return await service.list_quests(page=page, page_size=page_size, is_event=is_event)
 
 
 @router.patch("/quests/{quest_id}", response_model=AdminPostActionResponse)

@@ -22,7 +22,7 @@ celery = Celery(
 	"lifequest",
 	broker=broker_url,
 	backend=result_backend,
-	include=["app.workers.approval_tasks", "app.workers.maintenance_tasks"],
+	include=["app.workers.approval_tasks", "app.workers.maintenance_tasks", "app.workers.reward_tasks"],
 )
 
 celery.conf.update(
@@ -43,5 +43,9 @@ if not settings.TESTING:
 		"reco_log_retention": {
 			"task": "maintenance.reco_log_retention",
 			"schedule": crontab(minute=30, hour=0),
+		},
+		"events_finalize_overdue": {
+			"task": "events.finalize_overdue",
+			"schedule": crontab(minute="*/5"),  # Every 5 minutes
 		},
 	}

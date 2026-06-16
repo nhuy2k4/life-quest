@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, View, Easing } from 'react-native';
+import { Animated, StyleSheet, Text, View, Easing, Image } from 'react-native';
 
 import type { BadgeItem } from '@/types/badge';
 import { getRarityConfig, getProgressPercent } from './badgeUtils';
@@ -57,7 +57,8 @@ export function BadgeCard({ badge, isNew = false, size = 104 }: BadgeCardProps) 
   }, [percent, progressAnim]);
 
   const iconSize = Math.round(size * 0.38);
-  const iconName = (icon_url as any) || 'ribbon-outline';
+  const isImage = typeof icon_url === 'string' && (icon_url.startsWith('http://') || icon_url.startsWith('https://'));
+  const iconName = isImage ? 'ribbon-outline' : ((icon_url as any) || 'ribbon-outline');
 
   // ── Hidden locked ─────────────────────────────────────────────────────────
   if (is_hidden && !is_unlocked) {
@@ -120,7 +121,20 @@ export function BadgeCard({ badge, isNew = false, size = 104 }: BadgeCardProps) 
 
       {/* Icon */}
       <View style={styles.iconWrap}>
-        <Ionicons name={iconName} size={iconSize} color={iconColor} />
+        {isImage ? (
+          <Image
+            source={{ uri: icon_url }}
+            style={{
+              width: iconSize * 1.5,
+              height: iconSize * 1.5,
+              opacity: isLocked ? 0.3 : 1,
+              tintColor: isLocked ? '#C4C9D4' : undefined,
+            }}
+            resizeMode="contain"
+          />
+        ) : (
+          <Ionicons name={iconName} size={iconSize} color={iconColor} />
+        )}
       </View>
 
       {/* Title */}

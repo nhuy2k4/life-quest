@@ -72,6 +72,7 @@ class AdminQuestItem(BaseModel):
 	time_limit_hours: Optional[int] = None
 	categories: list[AdminCategoryItem] = []
 	is_active: bool
+	is_event: bool = False
 	created_at: datetime
 
 	model_config = {"from_attributes": True}
@@ -87,6 +88,7 @@ class AdminQuestUpdateRequest(BaseModel):
 	description: Optional[str] = None
 	difficulty: Optional[str] = Field(default=None, pattern="^(easy|medium|hard)$")
 	is_active: bool | None = None
+	is_event: Optional[bool] = None
 	xp_reward: int | None = Field(default=None, ge=0)
 	time_limit_hours: Optional[int] = Field(default=None, ge=1)
 

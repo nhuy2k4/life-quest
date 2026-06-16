@@ -50,6 +50,17 @@ const fmtDate = (value) => {
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
 };
 
+const openNativeDateTimePicker = (event) => {
+  const input = event.currentTarget;
+  if (typeof input.showPicker !== 'function') return;
+
+  try {
+    input.showPicker();
+  } catch {
+    // Some browsers only allow showPicker from a direct pointer action.
+  }
+};
+
 export default function EventsPage() {
   const [events, setEvents] = useState([]);
   const [quests, setQuests] = useState([]);
@@ -89,7 +100,7 @@ export default function EventsPage() {
   }, [fetchEvents]);
 
   useEffect(() => {
-    Promise.all([listQuests(1, 100), listBadges(1, 100)])
+    Promise.all([listQuests(1, 100, true), listBadges(1, 100)])
       .then(([questRes, badgeRes]) => {
         setQuests(questRes.data.items || []);
         setBadges(badgeRes.data.items || []);
@@ -252,7 +263,7 @@ export default function EventsPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <select value={status} onChange={(e) => setStatus(e.target.value)}>
+        <select className="event-status-filter" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">All statuses</option>
           {STATUS_OPTIONS.map((item) => (
             <option key={item} value={item}>{item}</option>
@@ -372,26 +383,33 @@ export default function EventsPage() {
                   </label>
                 </div>
 
-                <div className="form-row">
+                <div className="form-row event-schedule-row">
                   <div className="form-col">
                     <label>Start</label>
                     <input
+                      className="event-date-input"
                       type="datetime-local"
                       value={form.start_at}
+                      onClick={openNativeDateTimePicker}
+                      onFocus={openNativeDateTimePicker}
                       onChange={(e) => setForm((current) => ({ ...current, start_at: e.target.value }))}
                     />
                   </div>
                   <div className="form-col">
                     <label>End</label>
                     <input
+                      className="event-date-input"
                       type="datetime-local"
                       value={form.end_at}
+                      onClick={openNativeDateTimePicker}
+                      onFocus={openNativeDateTimePicker}
                       onChange={(e) => setForm((current) => ({ ...current, end_at: e.target.value }))}
                     />
                   </div>
-                  <div className="form-col">
+                  <div className="form-col event-status-col">
                     <label>Status</label>
                     <select
+                      className="event-status-select"
                       value={form.status}
                       onChange={(e) => setForm((current) => ({ ...current, status: e.target.value }))}
                     >

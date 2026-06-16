@@ -14,6 +14,8 @@ import { useToast } from '@/contexts/ToastContext';
 import { useUserContext } from '@/contexts/UserContext';
 import { HttpError } from '@/services/httpClient';
 import { getCurrentUser, getUserProfile, updateProfile } from '@/services/userService';
+import { uploadImage } from '@/services/uploadService';
+import * as ImagePicker from 'expo-image-picker';
 import { getLevelProgress } from '@/utils/levels';
 import { getItem, StorageKeys } from '@/utils/storage';
 
@@ -29,6 +31,30 @@ export default function EditProfileScreen() {
   const [originalEmail, setOriginalEmail] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+
+  const handleSelectAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      showToast('Cần quyền truy cập thư viện ảnh để đổi ảnh đại diện.');
+      return;
+    }
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setAvatarUri(result.assets[0].uri);
+      }
+    } catch {
+      showToast('Không thể chọn ảnh.');
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -97,6 +123,18 @@ export default function EditProfileScreen() {
 
     setIsSaving(true);
     try {
+      let uploadedAvatarUrl: string | null = null;
+      if (avatarUri) {
+        try {
+          const res = await uploadImage(token, avatarUri);
+          uploadedAvatarUrl = res.url;
+        } catch {
+          showToast('Không thể tải ảnh đại diện lên server.');
+          setIsSaving(false);
+          return;
+        }
+      }
+
       const payload = {
         username: nextUsername,
         display_name: displayName.trim() || null,
@@ -106,6 +144,7 @@ export default function EditProfileScreen() {
       const updated = await updateProfile(token, {
         ...payload,
         ...(isEmailChanged && nextEmail ? { email: nextEmail } : {}),
+        ...(uploadedAvatarUrl ? { avatar_url: uploadedAvatarUrl } : {}),
       });
       const profile = await getUserProfile(token, updated.id);
       const progress = getLevelProgress(updated.level_id, updated.xp);
@@ -114,6 +153,7 @@ export default function EditProfileScreen() {
         username: updated.username,
         displayName: updated.display_name || updated.username,
         bio: updated.bio || undefined,
+        avatarUrl: updated.avatar_url || undefined,
         level: progress.levelId,
         currentXp: progress.currentXp,
         nextLevelXp: progress.nextLevelXp,
@@ -135,6 +175,7 @@ export default function EditProfileScreen() {
                 author: {
                   ...post.author,
                   username: updated.username,
+                  avatarUrl: updated.avatar_url || undefined,
                 },
               }
             : post
@@ -164,9 +205,15 @@ export default function EditProfileScreen() {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.avatarWrap}>
-          <View style={styles.avatarBox}>
-            <Avatar size={96} label={(username || 'U').charAt(0)} />
-          </View>
+          <Pressable onPress={handleSelectAvatar} style={styles.avatarBox} disabled={isLoading || isSaving}>
+            <Avatar size={96} uri={avatarUri || currentUser?.avatarUrl} label={(username || 'U').charAt(0)} />
+            <View style={styles.editBadge}>
+              <Ionicons name="camera" size={16} color="#fff" />
+            </View>
+          </Pressable>
+          <Pressable onPress={handleSelectAvatar} disabled={isLoading || isSaving}>
+            <Text style={styles.changeAvatarText}>Đổi ảnh đại diện</Text>
+          </Pressable>
         </View>
 
         <Input label="Username" value={username} onChangeText={setUsername} placeholder="username" autoCapitalize="none" editable={!isLoading && !isSaving} />
@@ -236,6 +283,25 @@ const styles = StyleSheet.create({
   },
   avatarBox: {
     position: 'relative',
+  },
+  editBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#4F46E5',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderColor: '#fff',
+    borderWidth: 2,
+  },
+  changeAvatarText: {
+    color: '#4F46E5',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 4,
   },
   actions: {
     gap: 10,

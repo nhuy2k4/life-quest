@@ -23,7 +23,7 @@ import {
   type RecommendationSectionKey,
 } from '@/services/recommendationService';
 import { getAppLocation } from '@/services/locationService';
-import { getActiveEvents, getFeed, type EventListItem } from '@/services/socialService';
+import { getEvents, getFeed, type EventListItem } from '@/services/socialService';
 import type { Post, Quest } from '@/types';
 import { StorageKeys, getItem, removeItem, setItem } from '@/utils/storage';
 
@@ -63,8 +63,8 @@ function mergePostsById(primary: Post[], secondary: Post[]): Post[] {
         Boolean(existing.submissionId && item.submissionId && existing.submissionId === item.submissionId && existing.id !== item.id);
 
       merged[existingIndex] = {
-        ...item,
         ...existing,
+        ...item,
         id: sameSubmissionWithDifferentPost ? item.id : existing.id,
         createdAt: sameSubmissionWithDifferentPost ? item.createdAt : existing.createdAt,
       };
@@ -206,24 +206,36 @@ function HomeTabs({
   );
 }
 
-function ActiveEventStrip({ events }: { events: EventListItem[] }) {
+function EventStrip({ events }: { events: EventListItem[] }) {
   if (events.length === 0) return null;
+
+  // Sort: active first, then ended
+  const sorted = [...events].sort((a, b) => {
+    if (a.status === b.status) return 0;
+    return a.status === 'active' ? -1 : 1;
+  });
 
   return (
     <View style={styles.eventStrip}>
-      <Text style={styles.eventStripTitle}>Live events</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 }}>
+        <Text style={[styles.eventStripTitle, { paddingHorizontal: 0 }]}>Sự kiện</Text>
+        <Pressable onPress={() => router.push('/(main)/events')}>
+          <Text style={{ fontSize: 12, color: '#4F46E5', fontWeight: '600' }}>Xem tất cả</Text>
+        </Pressable>
+      </View>
       <FlatList
-        data={events}
+        data={sorted}
         horizontal
         keyExtractor={(item) => item.id}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.eventStripList}
         renderItem={({ item }) => {
+          const isEnded = item.status === 'ended';
           const endTime = new Date(item.end_at).getTime();
           const hoursLeft = Math.max(0, Math.ceil((endTime - Date.now()) / (60 * 60 * 1000)));
           return (
             <Pressable
-              style={styles.eventPill}
+              style={[styles.eventPill, isEnded && styles.eventPillEnded]}
               onPress={() =>
                 router.push({
                   pathname: ROUTES.modal.eventDetail as any,
@@ -231,10 +243,21 @@ function ActiveEventStrip({ events }: { events: EventListItem[] }) {
                 })
               }
             >
-              <Ionicons name="trophy-outline" size={15} color="#11181C" />
+              <Ionicons
+                name={isEnded ? 'flag-outline' : 'trophy-outline'}
+                size={15}
+                color={isEnded ? '#9CA3AF' : '#11181C'}
+              />
               <View style={styles.eventPillTextWrap}>
-                <Text style={styles.eventPillTitle} numberOfLines={1}>{item.title}</Text>
-                <Text style={styles.eventPillMeta}>{hoursLeft > 0 ? `${hoursLeft}h left` : 'Ending soon'}</Text>
+                <Text
+                  style={[styles.eventPillTitle, isEnded && styles.eventPillTitleEnded]}
+                  numberOfLines={1}
+                >
+                  {item.title}
+                </Text>
+                <Text style={[styles.eventPillMeta, isEnded && styles.eventPillMetaEnded]}>
+                  {isEnded ? 'Đã kết thúc' : hoursLeft > 0 ? `${hoursLeft}h còn lại` : 'Sắp kết thúc'}
+                </Text>
               </View>
             </Pressable>
           );
@@ -739,7 +762,7 @@ export default function HomeScreen() {
         return;
       }
 
-      const activeEventsPromise = getActiveEvents(token);
+      const activeEventsPromise = getEvents(token);  // Load all events (active + ended)
 
       const currentLocation = await getAppLocation({
         maxAgeMs: mode === 'refresh' ? 30 * 1000 : 2 * 60 * 1000,
@@ -820,7 +843,7 @@ export default function HomeScreen() {
 
       const [feedResult, activeEventsResult] = await Promise.allSettled([
         getFeed(token, page),
-        page === 1 ? getActiveEvents(token) : Promise.resolve(null),
+        page === 1 ? getEvents(token) : Promise.resolve(null),
       ]);
 
       if (feedResult.status === 'rejected') {
@@ -908,7 +931,7 @@ export default function HomeScreen() {
               onSearch={() => setSearchOpen(true)}
               onMessages={() => router.push(ROUTES.main.chat as any)}
             />
-            {activeTab === 'for_you' ? <ActiveEventStrip events={activeEvents} /> : null}
+            {activeTab === 'for_you' ? <EventStrip events={activeEvents} /> : null}
             {activeTab !== 'for_you' && isLoadingRecommendations ? (
               <View style={styles.loadingPanel}>
                 <ActivityIndicator size="small" color="#11181C" />
@@ -1085,6 +1108,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+  eventPillEnded: {
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    opacity: 0.75,
+  },
   eventPillTextWrap: {
     minWidth: 120,
   },
@@ -1093,10 +1121,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  eventPillTitleEnded: {
+    color: '#6B7280',
+  },
   eventPillMeta: {
     color: '#9CA3AF',
     fontSize: 11,
     marginTop: 2,
+  },
+  eventPillMetaEnded: {
+    color: '#D1D5DB',
   },
   emptyPanelText: {
     color: '#9CA3AF',

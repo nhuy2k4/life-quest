@@ -41,6 +41,7 @@ class QuestDetailResponse(BaseModel):
 
 	poi_required: bool = False
 	is_active: bool
+	is_event: bool = False
 
 	user_status: QuestUserStatus = "not_started"
 	started_at: datetime | None = None
@@ -65,6 +66,7 @@ class SubmitQuestRequest(BaseModel):
 	lat: float | None = None
 	lng: float | None = None
 	location_accuracy_m: float | None = None
+	is_event: bool = False
 
 
 class SubmitQuestResponse(BaseModel):

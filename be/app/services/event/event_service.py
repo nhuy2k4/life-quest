@@ -3,16 +3,16 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import case, delete, func, select, update, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import BadRequestException, NotFoundException
 from app.models.badge import Badge
-from app.models.enums import EventStatus, SubmissionStatus, XpSource
+from app.models.enums import EventStatus, SubmissionStatus, XpSource, PostVisibility, UserQuestStatus
 from app.models.event import Event, EventQuest, EventResult
 from app.models.quest import Quest
-from app.models.social import Post
+from app.models.social import Post, Follow
 from app.models.submission import Submission
 from app.models.user import User
 from app.models.user_quest import UserQuest
@@ -71,7 +71,7 @@ class EventService:
 		for event_id in event_ids.all():
 			await self._finalize_if_needed(event_id=event_id)
 
-	async def get_event_detail(self, *, event_id: uuid.UUID) -> EventDetailResponse:
+	async def get_event_detail(self, *, event_id: uuid.UUID, user_id: uuid.UUID | None = None) -> EventDetailResponse:
 		await self._finalize_if_needed(event_id=event_id)
 		event = await self.db.scalar(
 			select(Event)
@@ -80,6 +80,32 @@ class EventService:
 		)
 		if event is None:
 			raise NotFoundException("Event khong ton tai")
+
+		# Check if the current user has joined this event
+		is_joined = False
+		if user_id is not None:
+			# User is considered "joined" if they have posted a submission for this event
+			post_check = await self.db.scalar(
+				select(Post.id)
+				.where(Post.event_id == event_id, Post.user_id == user_id)
+				.limit(1)
+			)
+			if post_check is not None:
+				is_joined = True
+			else:
+				# OR if they have started an event-specific quest associated with this event
+				event_quest_ids = [q.id for q in event.quests]
+				if event_quest_ids:
+					uq_check = await self.db.scalar(
+						select(UserQuest.id)
+						.where(
+							UserQuest.user_id == user_id,
+							UserQuest.quest_id.in_(event_quest_ids),
+							UserQuest.status == UserQuestStatus.STARTED
+						)
+						.limit(1)
+					)
+					is_joined = uq_check is not None
 
 		reward_config = self._normalize_reward_config(event.reward_config)
 		return EventDetailResponse(
@@ -91,6 +117,7 @@ class EventService:
 			end_at=event.end_at,
 			status=event.status,
 			reward_config=reward_config,
+			is_joined=is_joined,
 			quests=[
 				{
 					"id": quest.id,
@@ -178,11 +205,21 @@ class EventService:
 		page_size: int,
 	) -> tuple[list[PostResponse], int]:
 		offset = (page - 1) * page_size
+		event = await self.db.scalar(select(Event).where(Event.id == event_id))
+		if event is None:
+			raise NotFoundException("Event khong ton tai")
+		event_post_filter = or_(
+			Post.event_id == event_id,
+			and_(Post.event_id.is_(None), EventQuest.event_id == event_id),
+		)
+
 		total = await self.db.scalar(
 			select(func.count())
 			.select_from(Post)
-			.join(Submission, Submission.id == Post.submission_id)
-			.where(Post.event_id == event_id, Submission.status == SubmissionStatus.APPROVED)
+			.outerjoin(Submission, Submission.id == Post.submission_id)
+			.outerjoin(UserQuest, UserQuest.id == Submission.user_quest_id)
+			.outerjoin(EventQuest, EventQuest.quest_id == func.coalesce(Post.quest_id, UserQuest.quest_id))
+			.where(event_post_filter)
 		)
 		rows = await self.db.scalars(
 			select(Post)
@@ -194,30 +231,61 @@ class EventService:
 				selectinload(Post.poi),
 				selectinload(Post.event),
 			)
-			.join(Submission, Submission.id == Post.submission_id)
-			.where(Post.event_id == event_id, Submission.status == SubmissionStatus.APPROVED)
-			.order_by(Post.created_at.desc())
+			.outerjoin(Submission, Submission.id == Post.submission_id)
+			.outerjoin(UserQuest, UserQuest.id == Submission.user_quest_id)
+			.outerjoin(EventQuest, EventQuest.quest_id == func.coalesce(Post.quest_id, UserQuest.quest_id))
+			.where(event_post_filter)
+			.order_by(
+				case((Post.user_id == user_id, 0), else_=1),
+				Post.created_at.desc(),
+			)
 			.offset(offset)
 			.limit(page_size)
 		)
 		posts = rows.all()
+		changed_posts = False
+		for post in posts:
+			if post.event_id is None:
+				post.event_id = event_id
+				post.event = event
+				changed_posts = True
+			if post.visibility != PostVisibility.PUBLIC:
+				post.visibility = PostVisibility.PUBLIC
+				changed_posts = True
 
 		liked_post_ids = await self.social_service._get_liked_post_ids(
 			user_id=user_id,
 			post_ids=[post.id for post in posts],
 		)
 		following_ids = await self.social_service._get_following_ids(user_id=user_id)
+		friend_ids = await self.social_service._get_friend_ids(user_id=user_id)
 		counts_by_post = await self.social_service._get_post_counts(post_ids=[post.id for post in posts])
+
+		# Fetch event results (rank + badge) keyed by user_id — only present when event has ended
+		result_rows = await self.db.execute(
+			select(EventResult, Badge)
+			.outerjoin(Badge, Badge.id == EventResult.badge_id)
+			.where(EventResult.event_id == event_id)
+		)
+		event_result_by_user: dict[uuid.UUID, tuple[int, str | None]] = {
+			er.user_id: (er.rank, badge.icon_url if badge else None)
+			for er, badge in result_rows.all()
+		}
 
 		items = [
 			SocialService._to_post_response(
 				post,
 				liked_by_me=post.id in liked_post_ids,
 				followed_by_me=post.user_id in following_ids,
+				is_friend=post.user_id in friend_ids,
 				counts=counts_by_post.get(post.id),
+				event_rank=event_result_by_user.get(post.user_id, (None, None))[0],
+				event_badge_url=event_result_by_user.get(post.user_id, (None, None))[1],
 			)
 			for post in posts
 		]
+		if changed_posts:
+			await self.db.commit()
 
 		return items, int(total or 0)
 
@@ -343,7 +411,7 @@ class EventService:
 		event.status = EventStatus.ENDED
 
 		reward_config = self._normalize_reward_config(event.reward_config)
-		leaderboard = await self._get_live_leaderboard(event_id=event.id, limit=5)
+		leaderboard = await self._get_live_leaderboard(event_id=event.id, limit=100)
 		badge_service = BadgeService(self.db)
 
 		for item in leaderboard.items:
@@ -366,18 +434,19 @@ class EventService:
 			if reward.badge_id:
 				await badge_service.repo.award_badge(user_id=item.user.id, badge_id=reward.badge_id)
 
-			await NotificationService(self.db).create_notification(
-				user_id=item.user.id,
-				notification_type="event_reward",
-				data={
-					"event_id": str(event.id),
-					"rank": item.rank,
-					"bonus_xp": reward.bonus_xp,
-					"badge_id": str(reward.badge_id) if reward.badge_id else None,
-				},
-				push_title="Event reward",
-				push_body=f"You placed #{item.rank} in {event.title}.",
-			)
+			if reward.bonus_xp > 0 or reward.badge_id is not None:
+				await NotificationService(self.db).create_notification(
+					user_id=item.user.id,
+					notification_type="event_reward",
+					data={
+						"event_id": str(event.id),
+						"rank": item.rank,
+						"bonus_xp": reward.bonus_xp,
+						"badge_id": str(reward.badge_id) if reward.badge_id else None,
+					},
+					push_title="Event reward",
+					push_body=f"You placed #{item.rank} in {event.title}.",
+				)
 
 	async def _grant_event_xp(self, *, user_id: uuid.UUID, amount: int) -> None:
 		user = await self.db.scalar(select(User).where(User.id == user_id))

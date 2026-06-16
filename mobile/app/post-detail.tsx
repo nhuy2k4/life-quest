@@ -3,6 +3,7 @@ import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 
 import { CommentSheet } from '@/components/lifequest/CommentSheet';
 import { ImageWithFallback } from '@/components/lifequest/ImageWithFallback';
@@ -62,6 +63,8 @@ export default function PostDetailScreen() {
     timeAgo: matched.createdAt,
     quest: matched.quest,
     event: matched.event,
+    eventRank: matched.eventRank,
+    eventBadgeUrl: matched.eventBadgeUrl,
   };
 
   const handleLike = async () => {
@@ -139,9 +142,18 @@ export default function PostDetailScreen() {
             <Pressable
               style={styles.userInfo}
               onPress={() => router.push(ROUTES.otherProfile(display.authorId) as Href)}>
-              <Avatar size={40} label={display.username.charAt(0)} />
+              <Avatar size={40} uri={matched.author.avatarUrl} label={display.username.charAt(0)} />
               <View>
-                <Text style={styles.username}>{display.username}</Text>
+                <View style={styles.usernameRow}>
+                  <Text style={styles.username}>{display.username}</Text>
+                  {display.eventBadgeUrl ? (
+                    <Image
+                      source={{ uri: display.eventBadgeUrl }}
+                      style={styles.eventBadgeIcon}
+                      contentFit="contain"
+                    />
+                  ) : null}
+                </View>
                 <View style={styles.locationRow}>
                   <Ionicons name="location-outline" size={11} color="#9CA3AF" />
                   <Text style={styles.locationText}>{display.location}</Text>
@@ -172,6 +184,23 @@ export default function PostDetailScreen() {
                 <Ionicons name="trophy-outline" size={12} color="#fff" />
                 <Text style={styles.questRibbonText}>{display.event.title}</Text>
               </Pressable>
+            ) : null}
+            {display.eventRank != null ? (
+              <View
+                style={[
+                  styles.rankOverlay,
+                  display.eventRank === 1
+                    ? styles.rankOverlayGold
+                    : display.eventRank === 2
+                    ? styles.rankOverlaySilver
+                    : display.eventRank === 3
+                    ? styles.rankOverlayBronze
+                    : styles.rankOverlayDefault,
+                ]}
+              >
+                <Ionicons name="trophy" size={12} color="#fff" />
+                <Text style={styles.rankOverlayText}>#{display.eventRank}</Text>
+              </View>
             ) : null}
           </View>
 
@@ -515,6 +544,44 @@ const styles = StyleSheet.create({
   previewTime: {
     color: '#D1D5DB',
     fontSize: 11,
+  },
+  usernameRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 5,
+  },
+  eventBadgeIcon: {
+    borderRadius: 10,
+    height: 20,
+    width: 20,
+  },
+  rankOverlay: {
+    alignItems: 'center',
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    position: 'absolute',
+    right: 10,
+    top: 10,
+  },
+  rankOverlayGold: {
+    backgroundColor: 'rgba(180, 120, 0, 0.88)',
+  },
+  rankOverlaySilver: {
+    backgroundColor: 'rgba(100, 110, 125, 0.88)',
+  },
+  rankOverlayBronze: {
+    backgroundColor: 'rgba(140, 80, 30, 0.88)',
+  },
+  rankOverlayDefault: {
+    backgroundColor: 'rgba(17, 24, 28, 0.80)',
+  },
+  rankOverlayText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   emptyWrap: {
     flex: 1,

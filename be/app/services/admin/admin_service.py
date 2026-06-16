@@ -135,11 +135,19 @@ class AdminService:
 		await self.db.commit()
 		return AdminUserXpAdjustResponse(user_id=user.id, amount=payload.amount, new_xp=user.xp)
 
-	async def list_quests(self, *, page: int, page_size: int) -> AdminQuestListResponse:
+	async def list_quests(self, *, page: int, page_size: int, is_event: bool | None = None) -> AdminQuestListResponse:
 		offset = (page - 1) * page_size
-		total = await self.db.scalar(select(func.count()).select_from(Quest))
+		
+		# Build query with optional is_event filter
+		query = select(Quest)
+		total_query = select(func.count()).select_from(Quest)
+		if is_event is not None:
+			query = query.where(Quest.is_event == is_event)
+			total_query = total_query.where(Quest.is_event == is_event)
+			
+		total = await self.db.scalar(total_query)
 		rows = await self.db.scalars(
-			select(Quest)
+			query
 			.options(selectinload(Quest.categories))
 			.order_by(Quest.created_at.desc())
 			.offset(offset)
@@ -160,6 +168,7 @@ class AdminService:
 					for c in quest.categories
 				],
 				is_active=quest.is_active,
+				is_event=quest.is_event,
 				created_at=quest.created_at,
 			)
 			for quest in rows.all()

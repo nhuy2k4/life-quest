@@ -21,6 +21,8 @@ type XpGainContextValue = {
 type XpGainItem = {
   id: number;
   xp: number;
+  type?: string;
+  eventRank?: number;
 };
 
 const XpGainContext = createContext<XpGainContextValue | undefined>(undefined);
@@ -41,6 +43,9 @@ function extractXpFromNotification(item: Pick<NotificationItem, 'type' | 'data'>
   }
   if (item.type === 'quest_rejected') {
     return readNumber(item.data, 'consolation_xp');
+  }
+  if (item.type === 'event_reward') {
+    return readNumber(item.data, 'bonus_xp');
   }
   if (item.type === 'xp') {
     return (
@@ -77,14 +82,20 @@ function XpGainToast({ item, onDone }: { item: XpGainItem; onDone: (id: number) 
     transform: [{ translateX: translateX.value }, { scale: scale.value }],
   }));
 
+  const isEvent = item.type === 'event_reward';
+  const iconBg = isEvent ? '#D97706' : '#FDE68A';
+  const iconColor = isEvent ? '#FFFFFF' : '#111827';
+  const iconName = isEvent ? 'trophy' : 'flash';
+  const captionText = isEvent ? (item.eventRank ? `Rank #${item.eventRank}` : 'Event Reward') : 'Reward gained';
+
   return (
     <Animated.View pointerEvents="none" style={[styles.toast, animatedStyle]}>
-      <View style={styles.iconWrap}>
-        <Ionicons name="flash" size={18} color="#111827" />
+      <View style={[styles.iconWrap, { backgroundColor: iconBg }]}>
+        <Ionicons name={iconName} size={16} color={iconColor} />
       </View>
       <View>
         <Text style={styles.amount}>{`+${item.xp} XP`}</Text>
-        <Text style={styles.caption}>Reward gained</Text>
+        <Text style={styles.caption}>{captionText}</Text>
       </View>
     </Animated.View>
   );
@@ -99,7 +110,7 @@ export function XpGainProvider({ children }: PropsWithChildren) {
     setItems((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
-  const showXpGain = useCallback((xp: number) => {
+  const showXpGain = useCallback((xp: number, type?: string, eventRank?: number) => {
     if (!Number.isFinite(xp) || xp <= 0) return;
 
     setItems((prev) => [
@@ -107,6 +118,8 @@ export function XpGainProvider({ children }: PropsWithChildren) {
       {
         id: Date.now() + Math.random(),
         xp: Math.round(xp),
+        type,
+        eventRank,
       },
     ]);
   }, []);
@@ -135,7 +148,11 @@ export function XpGainProvider({ children }: PropsWithChildren) {
         .forEach((item) => {
           if (seen.has(item.id)) return;
           seen.add(item.id);
-          showXpGain(extractXpFromNotification(item));
+          const xp = extractXpFromNotification(item);
+          if (xp > 0) {
+            const rank = typeof item.data?.rank === 'number' ? item.data.rank : undefined;
+            showXpGain(xp, item.type, rank);
+          }
         });
     } catch {
       // XP animation is decorative; notification polling should never affect app flow.
@@ -179,12 +196,13 @@ export function XpGainProvider({ children }: PropsWithChildren) {
           if (seenNotificationIdsRef.current.has(id)) return;
           seenNotificationIdsRef.current.add(id);
 
-          showXpGain(
-            extractXpFromNotification({
-              type: String(request.content.data?.type ?? request.content.categoryIdentifier ?? ''),
-              data: request.content.data ?? null,
-            })
-          );
+          const type = String(request.content.data?.type ?? request.content.categoryIdentifier ?? '');
+          const data = request.content.data ?? null;
+          const xp = extractXpFromNotification({ type, data });
+          if (xp > 0) {
+            const rank = typeof data?.rank === 'number' ? data.rank : undefined;
+            showXpGain(xp, type, rank);
+          }
         });
       } catch {
         // Push listeners are unavailable in some Expo Go/runtime combinations.

@@ -60,6 +60,7 @@ export default function QuestsPage() {
       difficulty: quest.difficulty,
       time_limit_hours: quest.time_limit_hours || '',
       is_active: quest.is_active,
+      is_event: quest.is_event || false,
     });
   };
 
@@ -180,11 +181,16 @@ export default function QuestsPage() {
                       {q.time_limit_hours ? `${q.time_limit_hours}h` : '—'}
                     </td>
                     <td>
-                      {q.is_active ? (
-                        <span className="badge badge-success">Active</span>
-                      ) : (
-                        <span className="badge badge-danger">Hidden</span>
-                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                        {q.is_active ? (
+                          <span className="badge badge-success">Active</span>
+                        ) : (
+                          <span className="badge badge-danger">Hidden</span>
+                        )}
+                        {q.is_event && (
+                          <span className="badge badge-info">Event</span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <div className="action-btns">
@@ -287,6 +293,15 @@ export default function QuestsPage() {
                 onChange={(e) => setEditForm(f => ({ ...f, is_active: e.target.checked }))}
               />
               Activate quest
+            </label>
+            <label className="checkbox-label" style={{ marginTop: '8px' }}>
+              <input
+                id="edit-isevent"
+                type="checkbox"
+                checked={editForm.is_event}
+                onChange={(e) => setEditForm(f => ({ ...f, is_event: e.target.checked }))}
+              />
+              Event Quest (only show in Event settings)
             </label>
           </div>
           <div className="modal-actions">

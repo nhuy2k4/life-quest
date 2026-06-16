@@ -27,7 +27,7 @@ from app.schemas.recommendation import (
 	RecommendationSection,
 	RecommendationSectionKey,
 )
-from app.schemas.social import PostQuestInfo
+from app.schemas.social import PostQuestInfo, PostEventInfo
 from app.schemas.user import UserPublicResponse
 from app.services.quest.quest_renderer import render_quest_text
 from app.repositories.quest_repository import QuestRepository
@@ -201,10 +201,25 @@ class RecommendationService:
 		lat: float | None,
 		lng: float | None,
 	) -> dict[tuple[uuid.UUID, uuid.UUID | None], CandidateScore]:
+		# Get active quests: is_event == False OR has STARTED/ongoing status in status_map
+		started_quest_ids = [
+			quest_id for (quest_id, poi_id), status in status_map.items()
+			if status == UserQuestStatus.STARTED
+		]
+
+		query = select(Quest).options(selectinload(Quest.categories)).where(Quest.is_active.is_(True))
+		if started_quest_ids:
+			query = query.where(
+				or_(
+					Quest.is_event.is_(False),
+					Quest.id.in_(started_quest_ids)
+				)
+			)
+		else:
+			query = query.where(Quest.is_event.is_(False))
+
 		rows = await self.db.scalars(
-			select(Quest)
-			.options(selectinload(Quest.categories))
-			.where(Quest.is_active.is_(True))
+			query
 			.order_by(Quest.created_at.desc())
 			.limit(250)
 		)
@@ -512,6 +527,7 @@ class RecommendationService:
 				.selectinload(Submission.user_quest)
 				.selectinload(UserQuest.quest)
 				.selectinload(Quest.categories),
+				selectinload(Post.event),
 			)
 		)
 		ranked_order = (
@@ -806,6 +822,14 @@ class RecommendationService:
 			score += freshness_score
 			reasons.append("Fresh post")
 
+		if post.event:
+			event_info = PostEventInfo(
+				id=post.event.id,
+				title=post.event.title,
+			)
+		else:
+			event_info = None
+
 		like_count, comment_count = counts if counts is not None else (post.like_count, post.comment_count)
 		return RecommendationPostItem(
 			id=post.id,
@@ -814,6 +838,7 @@ class RecommendationService:
 			caption=post.caption,
 			location_name=post.location_name,
 			quest=quest_info,
+			event=event_info,
 			user=UserPublicResponse.model_validate(post.user),
 			like_count=like_count,
 			comment_count=comment_count,

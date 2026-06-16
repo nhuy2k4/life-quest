@@ -50,22 +50,32 @@ async def _process_submission_ai(submission_id: str) -> None:
 		await repository.commit()
 
 		if submission.lat is not None and submission.lng is not None:
-			match = await poi_matcher.match_poi(db=session, lat=submission.lat, lng=submission.lng)
-			if match is not None:
-				submission.poi_id = match.poi.id
-				submission.poi_distance_m = match.distance_m
-				if submission.user_quest.poi_id is None:
-					submission.user_quest.poi_id = match.poi.id
-				# Create quest instance mapping if it doesn't exist yet.
-				await session.execute(
-					insert(QuestInstance)
-					.values(
-						quest_id=submission.user_quest.quest_id,
-						user_id=submission.user_quest.user_id,
-						poi_id=match.poi.id,
+			from sqlalchemy import select
+			from app.models.social import Post
+
+			# Check if this submission is linked to a post with an event_id
+			post_event_id = await session.scalar(
+				select(Post.event_id)
+				.where(Post.submission_id == submission.id)
+			)
+
+			if submission.user_quest.quest.location_required and not post_event_id:
+				match = await poi_matcher.match_poi(db=session, lat=submission.lat, lng=submission.lng)
+				if match is not None:
+					submission.poi_id = match.poi.id
+					submission.poi_distance_m = match.distance_m
+					if submission.user_quest.poi_id is None:
+						submission.user_quest.poi_id = match.poi.id
+					# Create quest instance mapping if it doesn't exist yet.
+					await session.execute(
+						insert(QuestInstance)
+						.values(
+							quest_id=submission.user_quest.quest_id,
+							user_id=submission.user_quest.user_id,
+							poi_id=match.poi.id,
+						)
+						.on_conflict_do_nothing()
 					)
-					.on_conflict_do_nothing()
-				)
 
 		decision = run_approval_pipeline(submission)
 
@@ -115,6 +125,55 @@ async def _process_submission_ai(submission_id: str) -> None:
 					"poi_validated": poi_validated,
 				},
 			)
+
+			# ── Update user streak ────────────────────────────────────────────
+			try:
+				from datetime import datetime, timezone, timedelta
+				from app.models.submission import Submission
+				from app.models.user_quest import UserQuest
+				from app.models.user import User
+				from sqlalchemy import select
+
+				user_id_val = submission.user_quest.user_id
+				user_obj = await session.scalar(select(User).where(User.id == user_id_val))
+				if user_obj:
+					# Check the date of the previous approved submission (excluding this one)
+					stmt = (
+						select(Submission.created_at)
+						.join(UserQuest, Submission.user_quest_id == UserQuest.id)
+						.where(
+							UserQuest.user_id == user_id_val,
+							Submission.status == SubmissionStatus.APPROVED,
+							Submission.id != submission.id
+						)
+						.order_by(Submission.created_at.desc())
+						.limit(1)
+					)
+					last_approved_time = await session.scalar(stmt)
+					
+					now_time = datetime.now(timezone.utc)
+					vn_tz_val = timezone(timedelta(hours=7))
+					current_date_val = now_time.astimezone(vn_tz_val).date()
+
+					if last_approved_time:
+						if last_approved_time.tzinfo is None:
+							last_approved_time = last_approved_time.replace(tzinfo=timezone.utc)
+						last_approved_date_val = last_approved_time.astimezone(vn_tz_val).date()
+
+						if current_date_val == last_approved_date_val:
+							# Same day, do nothing
+							pass
+						elif current_date_val == last_approved_date_val + timedelta(days=1):
+							# Yesterday, increment!
+							user_obj.streak_days += 1
+						else:
+							# Overdue, streak broke, reset to 1
+							user_obj.streak_days = 1
+					else:
+						# First approved quest!
+						user_obj.streak_days = 1
+			except Exception:
+				logger.exception("Failed to update streak for user %s", submission.user_quest.user_id)
 
 			# ── Auto-unlock badges ────────────────────────────────────────────
 			try:

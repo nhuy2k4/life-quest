@@ -14,7 +14,7 @@ import {
 } from '@/services/notificationService';
 import { getItem, StorageKeys } from '@/utils/storage';
 
-type NotifType = 'like' | 'comment' | 'follow' | 'quest_complete' | 'quest_rejected' | 'quest_suggest' | 'xp' | 'system' | 'badge_unlocked';
+type NotifType = 'like' | 'comment' | 'follow' | 'quest_complete' | 'quest_rejected' | 'quest_suggest' | 'xp' | 'system' | 'badge_unlocked' | 'event_reward';
 
 function asNotifType(value: string): NotifType {
   if (
@@ -25,7 +25,8 @@ function asNotifType(value: string): NotifType {
     value === 'quest_rejected' ||
     value === 'quest_suggest' ||
     value === 'xp' ||
-    value === 'badge_unlocked'
+    value === 'badge_unlocked' ||
+    value === 'event_reward'
   ) {
     return value;
   }
@@ -92,6 +93,15 @@ function notificationCopy(item: NotificationItem): { actor?: string; preview: st
       meta: `${rarityText}${readString(item.data, 'badge_name') ?? 'Check it out in your profile.'}`,
     };
   }
+  if (type === 'event_reward') {
+    const rank = item.data?.rank;
+    const bonusXp = item.data?.bonus_xp;
+    const rankText = rank ? `#${rank}` : '';
+    return {
+      preview: `You placed ${rankText} in the event!`,
+      meta: bonusXp ? `Received event reward: +${bonusXp} XP` : 'Event reward unlocked',
+    };
+  }
   return { preview: 'You have a new notification.' };
 }
 
@@ -103,6 +113,7 @@ function NotifIcon({ type }: { type: NotifType }) {
   if (type === 'quest_rejected') return <Ionicons name="alert-circle-outline" size={16} color="#fff" />;
   if (type === 'badge_unlocked') return <Ionicons name="ribbon-outline" size={16} color="#fff" />;
   if (type === 'quest_suggest') return <Ionicons name="flash-outline" size={16} color="#fff" />;
+  if (type === 'event_reward') return <Ionicons name="trophy" size={16} color="#fff" />;
   return <Ionicons name="notifications-outline" size={16} color="#4B5563" />;
 }
 
@@ -114,8 +125,8 @@ function NotificationRow({
   onRead: (id: string) => void;
 }) {
   const type = asNotifType(item.type);
-  const isSystem = type === 'quest_complete' || type === 'quest_rejected' || type === 'quest_suggest' || type === 'xp' || type === 'system' || type === 'badge_unlocked';
-  const iconBg = type === 'quest_complete' ? '#11181C' : type === 'quest_rejected' ? '#7F1D1D' : type === 'badge_unlocked' ? '#8B5CF6' : '#1F2937';
+  const isSystem = type === 'quest_complete' || type === 'quest_rejected' || type === 'quest_suggest' || type === 'xp' || type === 'system' || type === 'badge_unlocked' || type === 'event_reward';
+  const iconBg = type === 'quest_complete' ? '#11181C' : type === 'event_reward' ? '#D97706' : type === 'quest_rejected' ? '#7F1D1D' : type === 'badge_unlocked' ? '#8B5CF6' : '#1F2937';
   const copy = notificationCopy(item);
 
   return (

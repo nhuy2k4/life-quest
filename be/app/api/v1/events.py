@@ -45,10 +45,10 @@ async def create_event(
 @router.get("/{event_id}", response_model=EventDetailResponse)
 async def get_event_detail(
 	event_id: uuid.UUID,
-	_current_user: CurrentUser = Depends(get_current_user),
+	current_user: CurrentUser = Depends(get_current_user),
 	service: EventService = Depends(get_event_service),
 ) -> EventDetailResponse:
-	return await service.get_event_detail(event_id=event_id)
+	return await service.get_event_detail(event_id=event_id, user_id=current_user.id)
 
 
 @router.patch("/{event_id}", response_model=EventDetailResponse)

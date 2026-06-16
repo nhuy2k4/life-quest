@@ -40,6 +40,7 @@ export default function CameraResultScreen() {
 
   const [caption, setCaption] = useState('');
   const [location, setLocation] = useState('');
+  const [visibility, setVisibility] = useState<'public' | 'friends' | 'private'>('public');
   const [posting, setPosting] = useState(false);
   const [attachedQuest, setAttachedQuest] = useState<Pick<Quest, 'title' | 'xpReward'> | null>(null);
   const [attachedQuestId, setAttachedQuestId] = useState<string | null>(null);
@@ -49,6 +50,7 @@ export default function CameraResultScreen() {
   const attachedPoiRef = useRef<string | null>(null);
 
   const [isQuestFlow, setIsQuestFlow] = useState(false);
+  const [isEventQuest, setIsEventQuest] = useState(false);
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const [suggestedPoi, setSuggestedPoi] = useState<{ id: string; name: string } | null>(null);
 
@@ -112,8 +114,15 @@ export default function CameraResultScreen() {
   const imageUri = typeof params.uri === 'string' ? params.uri : undefined;
 
   useEffect(() => {
+    if (isEventQuest) {
+      setVisibility('public');
+    }
+  }, [isEventQuest]);
+
+  useEffect(() => {
     const init = async () => {
       let isQuest = false;
+      let isEvent = false;
       let activeQuestPoiId: string | null = null;
       
       try {
@@ -125,11 +134,14 @@ export default function CameraResultScreen() {
           poi_id?: string | null;
           poi_name?: string | null;
           poi_required?: boolean;
+          isEvent?: boolean;
         }>(StorageKeys.attachedQuest);
 
         if (cameraMode === 'quest' && raw) {
           isQuest = true;
+          isEvent = !!raw.isEvent;
           setIsQuestFlow(true);
+          setIsEventQuest(isEvent);
           setAttachedQuest({
             title: raw.title,
             xpReward: raw.xp,
@@ -143,7 +155,9 @@ export default function CameraResultScreen() {
         console.log('Error hydrating attached quest', err);
       }
 
-      setIsCheckingLocation(true);
+      if (!isEvent) {
+        setIsCheckingLocation(true);
+      }
       const startTime = Date.now();
 
       setIsLocating(true);
@@ -180,16 +194,18 @@ export default function CameraResultScreen() {
         });
 
         const { latitude, longitude, accuracy } = currentPos.coords;
-        const suggestion = await suggestPoi(latitude, longitude, accuracy);
-        
-        if (suggestion.poi_id && suggestion.name) {
-          if (isQuest && activeQuestPoiId) {
-            if (suggestion.poi_id === activeQuestPoiId) {
-              setPoiId(activeQuestPoiId);
-              setLocation(suggestion.name);
+        if (!isEvent) {
+          const suggestion = await suggestPoi(latitude, longitude, accuracy);
+          
+          if (suggestion.poi_id && suggestion.name) {
+            if (isQuest && activeQuestPoiId) {
+              if (suggestion.poi_id === activeQuestPoiId) {
+                setPoiId(activeQuestPoiId);
+                setLocation(suggestion.name);
+              }
+            } else {
+              setSuggestedPoi({ id: suggestion.poi_id, name: suggestion.name });
             }
-          } else {
-            setSuggestedPoi({ id: suggestion.poi_id, name: suggestion.name });
           }
         }
       } catch (err) {
@@ -251,9 +267,23 @@ export default function CameraResultScreen() {
         // Ensure the quest is started before submitting (covers "Try a Quest" picker flow
         // where startQuest was never called, unlike the quest-detail → camera flow).
         try {
-          await startQuest(token, attachedQuestId, poiId);
-        } catch {
-          // Ignore conflict (409) — quest may already be started.
+          const startResult = await startQuest(token, attachedQuestId, poiId);
+          // If the quest is REJECTED (retry mode), startQuest now returns status=rejected.
+          // This is fine — submitQuest will handle the retry path on the backend.
+          if (startResult.status === 'submitted' || startResult.status === 'approved') {
+            // Quest already finalized; cannot resubmit
+            showToast('Quest này đã được nộp hoặc hoàn thành rồi.');
+            return;
+          }
+        } catch (startErr) {
+          // Only propagate if it's a hard block (not REJECTED retry allowing resubmit)
+          const msg = startErr instanceof Error ? startErr.message : '';
+          const isHardBlock = msg.includes('đã được nộp') || msg.includes('hoàn thành') || msg.includes('hết số lần');
+          if (isHardBlock) {
+            showToast(msg);
+            return;
+          }
+          // Otherwise ignore (quest might already be in STARTED state — safe to continue)
         }
 
         let submissionLat = coords?.latitude;
@@ -273,10 +303,12 @@ export default function CameraResultScreen() {
             caption: caption.trim() || undefined,
             locationName: location.trim() || undefined,
             poiId,
+            visibility,
+            isEvent: isEventQuest,
           });
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Lỗi không xác định';
-          throw new Error(`Tạo post thất bại: ${msg}`);
+          throw new Error(msg);
         }
 
         let submission: Awaited<ReturnType<typeof submitQuest>>;
@@ -289,6 +321,7 @@ export default function CameraResultScreen() {
             poiId,
             lat: submissionLat,
             lng: submissionLng,
+            isEvent: isEventQuest,
           });
           if (submission.status === 'approved' || submission.submission_status === 'approved') {
             earnedXp = submission.xp_granted ?? submission.xp_reward ?? attachedQuest?.xpReward ?? 0;
@@ -296,7 +329,7 @@ export default function CameraResultScreen() {
         } catch (err) {
           await deletePost(token, serverPost.id).catch(() => undefined);
           const msg = err instanceof Error ? err.message : 'Lỗi không xác định';
-          throw new Error(`Submit quest thất bại: ${msg}`);
+          throw new Error(msg);
         }
 
         serverPost = {
@@ -316,7 +349,7 @@ export default function CameraResultScreen() {
           });
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Lỗi không xác định';
-          throw new Error(`Tạo post thất bại: ${msg}`);
+          throw new Error(msg);
         }
       }
 
@@ -429,7 +462,7 @@ export default function CameraResultScreen() {
 
         {isQuestFlow ? (
           <>
-            {isCheckingLocation ? (
+            {isCheckingLocation && !isEventQuest ? (
               <View style={styles.section}>
                 <View style={styles.checkingBox}>
                   <ActivityIndicator size="small" color="#4F46E5" style={{ marginRight: 8 }} />
@@ -457,7 +490,7 @@ export default function CameraResultScreen() {
                   </View>
                 ) : null}
 
-                {questPoiId && !poiId ? (
+                {questPoiId && !poiId && !isEventQuest ? (
                   <View style={styles.section}>
                     <View style={styles.warningBox}>
                       <Ionicons name="warning-outline" size={18} color="#DC2626" />
@@ -470,7 +503,7 @@ export default function CameraResultScreen() {
               </>
             )}
 
-            {suggestedPoi && (!poiId || poiId !== suggestedPoi.id) ? (
+            {suggestedPoi && (!poiId || poiId !== suggestedPoi.id) && !isEventQuest ? (
               <View style={styles.section}>
                 <TouchableOpacity
                   style={styles.suggestionBox}
@@ -586,6 +619,41 @@ export default function CameraResultScreen() {
               <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
             </TouchableOpacity>
           )}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.visibilityLabel}>Ai có thể xem bài viết này?</Text>
+          <View style={styles.visibilityOptions}>
+            <TouchableOpacity 
+              style={[
+                styles.visibilityOption, 
+                visibility === 'public' && styles.visibilityOptionActive,
+                isEventQuest && { flex: 1 }
+              ]}
+              onPress={() => setVisibility('public')}
+            >
+              <Ionicons name="earth" size={16} color={visibility === 'public' ? '#4F46E5' : '#6B7280'} />
+              <Text style={[styles.visibilityText, visibility === 'public' && styles.visibilityTextActive]}>Công khai</Text>
+            </TouchableOpacity>
+            {!isEventQuest && (
+              <>
+                <TouchableOpacity 
+                  style={[styles.visibilityOption, visibility === 'friends' && styles.visibilityOptionActive]}
+                  onPress={() => setVisibility('friends')}
+                >
+                  <Ionicons name="people" size={16} color={visibility === 'friends' ? '#4F46E5' : '#6B7280'} />
+                  <Text style={[styles.visibilityText, visibility === 'friends' && styles.visibilityTextActive]}>Bạn bè</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.visibilityOption, visibility === 'private' && styles.visibilityOptionActive]}
+                  onPress={() => setVisibility('private')}
+                >
+                  <Ionicons name="lock-closed" size={16} color={visibility === 'private' ? '#4F46E5' : '#6B7280'} />
+                  <Text style={[styles.visibilityText, visibility === 'private' && styles.visibilityTextActive]}>Chỉ mình tôi</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
         </View>
 
         <Text style={styles.questHint}>Quest will be automatically evaluated and rewarded after you post.</Text>
@@ -915,5 +983,39 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     fontWeight: '500',
+  },
+  visibilityLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4B5563',
+    marginBottom: 8,
+  },
+  visibilityOptions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  visibilityOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  visibilityOptionActive: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#C7D2FE',
+  },
+  visibilityText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  visibilityTextActive: {
+    color: '#4F46E5',
+    fontWeight: '600',
   },
 });

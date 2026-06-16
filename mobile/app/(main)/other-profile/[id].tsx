@@ -15,11 +15,15 @@ import { useToast } from '@/contexts/ToastContext';
 import { useUserContext } from '@/contexts/UserContext';
 import { followUser, unfollowUser } from '@/services/socialService';
 import { getUserProfile } from '@/services/userService';
+import { BadgeGrid } from '@/components/lifequest/badges/BadgeGrid';
+import { BadgeDetailModal } from '@/components/lifequest/badges/BadgeDetailModal';
+import { fetchBadges } from '@/services/badgeService';
+import type { BadgeItem } from '@/types/badge';
 import type { UserProfile } from '@/types';
 import { getLevelProgress } from '@/utils/levels';
 import { getItem, StorageKeys } from '@/utils/storage';
 
-type TabId = 'posts' | 'liked' | 'achievements';
+type TabId = 'posts' | 'liked' | 'awards' | 'achievements';
 
 function toUserProfile(data: Awaited<ReturnType<typeof getUserProfile>>): UserProfile {
   const progress = getLevelProgress(data.level_id, data.xp);
@@ -29,6 +33,7 @@ function toUserProfile(data: Awaited<ReturnType<typeof getUserProfile>>): UserPr
     username: data.username,
     displayName: data.display_name || data.username,
     bio: data.bio || undefined,
+    avatarUrl: data.avatar_url || undefined,
     level: progress.levelId,
     currentXp: progress.currentXp,
     nextLevelXp: progress.nextLevelXp,
@@ -55,6 +60,11 @@ export default function OtherProfileScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isFollowing, setIsFollowing] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('posts');
+  const [awards, setAwards] = useState<Post[]>([]);
+  const [isLoadingAwards, setIsLoadingAwards] = useState(false);
+  const [badges, setBadges] = useState<BadgeItem[]>([]);
+  const [isLoadingBadges, setIsLoadingBadges] = useState(false);
+  const [selectedBadge, setSelectedBadge] = useState<BadgeItem | null>(null);
 
   const userPosts = useMemo(
     () => posts.filter((post) => post.author.id === id),
@@ -93,6 +103,59 @@ export default function OtherProfileScreen() {
       mounted = false;
     };
   }, [id]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadAwards = async () => {
+      if (!id || activeTab !== 'awards') return;
+      setIsLoadingAwards(true);
+      try {
+        const token = await getItem<string>(StorageKeys.accessToken);
+        if (!token) return;
+        const { getUserAwards } = await import('@/services/socialService');
+        const res = await getUserAwards(token, id, 1, 100);
+        if (mounted) {
+          setAwards(res.items);
+        }
+      } catch (err) {
+        console.error('Failed to load awards', err);
+      } finally {
+        if (mounted) {
+          setIsLoadingAwards(false);
+        }
+      }
+    };
+    void loadAwards();
+    return () => {
+      mounted = false;
+    };
+  }, [id, activeTab]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadBadges = async () => {
+      if (!id || activeTab !== 'achievements') return;
+      setIsLoadingBadges(true);
+      try {
+        const token = await getItem<string>(StorageKeys.accessToken);
+        if (!token) return;
+        const res = await fetchBadges(token, undefined, id);
+        if (mounted) {
+          setBadges(res);
+        }
+      } catch (err) {
+        console.error('Failed to load badges', err);
+      } finally {
+        if (mounted) {
+          setIsLoadingBadges(false);
+        }
+      }
+    };
+    void loadBadges();
+    return () => {
+      mounted = false;
+    };
+  }, [id, activeTab]);
 
   const syncFeedFollowState = (nextFollowing: boolean) => {
     if (!id) return;
@@ -260,6 +323,10 @@ export default function OtherProfileScreen() {
             <Ionicons name="heart-outline" size={18} color={activeTab === 'liked' ? '#11181C' : '#9CA3AF'} />
             <View style={[styles.tabIndicator, activeTab === 'liked' ? styles.tabIndicatorActive : null]} />
           </Pressable>
+          <Pressable style={styles.tabButton} onPress={() => setActiveTab('awards')}>
+            <Ionicons name="medal-outline" size={18} color={activeTab === 'awards' ? '#F59E0B' : '#9CA3AF'} />
+            <View style={[styles.tabIndicator, activeTab === 'awards' ? styles.tabIndicatorActive : null]} />
+          </Pressable>
           <Pressable style={styles.tabButton} onPress={() => setActiveTab('achievements')}>
             <Ionicons name="ribbon-outline" size={18} color={activeTab === 'achievements' ? '#11181C' : '#9CA3AF'} />
             <View style={[styles.tabIndicator, activeTab === 'achievements' ? styles.tabIndicatorActive : null]} />
@@ -294,15 +361,68 @@ export default function OtherProfileScreen() {
           </View>
         ) : null}
 
-        {activeTab === 'achievements' ? (
+        {activeTab === 'awards' && isLoadingAwards ? (
           <View style={styles.emptyWrap}>
-            <Ionicons name="ribbon-outline" size={32} color="#D1D5DB" />
-            <Text style={styles.emptyText}>Chưa có thành tựu</Text>
+            <ActivityIndicator size="small" color="#F59E0B" />
           </View>
         ) : null}
+
+        {activeTab === 'awards' && !isLoadingAwards && awards.length > 0 ? (
+          <View style={styles.grid}>
+            {awards.map((post) => (
+              <Pressable
+                key={post.id}
+                style={styles.gridItem}
+                onPress={() => router.push({ pathname: ROUTES.modal.postDetail as any, params: { postId: post.id } })}
+              >
+                <ImageWithFallback uri={post.imageUrl || ''} width="100%" height={132} borderRadius={0} fallbackText="Award" />
+                <View style={{ position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12, padding: 4 }}>
+                  <Ionicons name="medal" size={16} color="#F59E0B" />
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
+        {activeTab === 'awards' && !isLoadingAwards && awards.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Ionicons name="medal-outline" size={32} color="#D1D5DB" />
+            <Text style={styles.emptyText}>Chưa có bài nào đoạt giải</Text>
+          </View>
+        ) : null}
+
+        {activeTab === 'achievements' && isLoadingBadges ? (
+          <View style={styles.emptyWrap}>
+            <ActivityIndicator size="small" color="#6366F1" />
+          </View>
+        ) : null}
+
+        {activeTab === 'achievements' && !isLoadingBadges && (
+          (() => {
+            const unlockedBadges = badges.filter((b) => b.is_unlocked);
+            if (unlockedBadges.length === 0) {
+              return (
+                <View style={styles.emptyWrap}>
+                  <Ionicons name="ribbon-outline" size={32} color="#D1D5DB" />
+                  <Text style={styles.emptyText}>Chưa hoàn thành thành tựu nào</Text>
+                </View>
+              );
+            }
+            return (
+              <BadgeGrid
+                badges={unlockedBadges}
+                onPressBadge={(badge) => setSelectedBadge(badge)}
+              />
+            );
+          })()
+        )}
       </ScrollView>
 
       <BottomNav />
+      <BadgeDetailModal
+        badge={selectedBadge}
+        onClose={() => setSelectedBadge(null)}
+      />
     </SafeAreaView>
   );
 }

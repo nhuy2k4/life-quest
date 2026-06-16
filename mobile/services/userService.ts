@@ -5,6 +5,7 @@ export type UserMeResponse = {
   username: string;
   display_name?: string | null;
   bio?: string | null;
+  avatar_url?: string | null;
   email: string;
   role: string;
   level_id: number;
@@ -22,6 +23,7 @@ export type PublicUserProfileResponse = {
   username: string;
   display_name?: string | null;
   bio?: string | null;
+  avatar_url?: string | null;
   level_id: number;
   xp: number;
   streak_days: number;

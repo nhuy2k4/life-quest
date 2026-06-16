@@ -17,16 +17,58 @@ class UserService:
 	def __init__(self, db: AsyncSession):
 		self.db = db
 
+	async def _update_streak_if_needed(self, user: User) -> None:
+		from datetime import datetime, timezone, timedelta
+		from app.models.submission import Submission
+		from app.models.user_quest import UserQuest
+		from app.models.enums import SubmissionStatus
+
+		stmt = (
+			select(Submission.created_at)
+			.join(UserQuest, Submission.user_quest_id == UserQuest.id)
+			.where(
+				UserQuest.user_id == user.id,
+				Submission.status == SubmissionStatus.APPROVED
+			)
+			.order_by(Submission.created_at.desc())
+			.limit(1)
+		)
+		last_approved_time = await self.db.scalar(stmt)
+		
+		if last_approved_time:
+			if last_approved_time.tzinfo is None:
+				last_approved_time = last_approved_time.replace(tzinfo=timezone.utc)
+			
+			now = datetime.now(timezone.utc)
+			vn_tz = timezone(timedelta(hours=7))
+			
+			last_approved_date = last_approved_time.astimezone(vn_tz).date()
+			current_date = now.astimezone(vn_tz).date()
+			
+			if current_date > last_approved_date + timedelta(days=1):
+				if user.streak_days > 0:
+					user.streak_days = 0
+					await self.db.commit()
+			elif user.streak_days == 0:
+				user.streak_days = 1
+				await self.db.commit()
+		else:
+			if user.streak_days > 0:
+				user.streak_days = 0
+				await self.db.commit()
+
 	async def get_me(self, user_id: uuid.UUID) -> User:
 		user = await self.db.scalar(select(User).where(User.id == user_id))
 		if user is None:
 			raise NotFoundException("User không tồn tại")
+		await self._update_streak_if_needed(user)
 		return user
 
 	async def get_public_profile(self, *, viewer_id: uuid.UUID, target_user_id: uuid.UUID) -> UserPublicProfileResponse:
 		user = await self.db.scalar(select(User).where(User.id == target_user_id))
 		if user is None:
-			raise NotFoundException("User khÃ´ng tá»“n táº¡i")
+			raise NotFoundException("User không tồn tại")
+		await self._update_streak_if_needed(user)
 
 		posts_count = await self.db.scalar(select(func.count()).select_from(Post).where(Post.user_id == target_user_id))
 		followers_count = await self.db.scalar(
@@ -56,6 +98,7 @@ class UserService:
 			username=user.username,
 			display_name=user.display_name,
 			bio=user.bio,
+			avatar_url=user.avatar_url,
 			level_id=user.level_id,
 			xp=user.xp,
 			streak_days=user.streak_days,

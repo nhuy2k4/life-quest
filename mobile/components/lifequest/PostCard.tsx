@@ -4,6 +4,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 
 import { CommentSheet } from '@/components/lifequest/CommentSheet';
 import { ImageWithFallback } from '@/components/lifequest/ImageWithFallback';
@@ -286,6 +287,7 @@ export function PostCard({ post, attachedQuest = null }: PostCardProps) {
     );
   }
 
+  console.log('[PostCard Render]', post.id, 'eventRank:', post.eventRank, 'eventBadgeUrl:', post.eventBadgeUrl);
   return (
     <>
       <View style={styles.card}>
@@ -293,7 +295,19 @@ export function PostCard({ post, attachedQuest = null }: PostCardProps) {
           <Pressable style={styles.userInfo} onPress={() => router.push(ROUTES.otherProfile(post.author.id) as Href)}>
             <Avatar size={36} uri={post.author.avatarUrl} label={post.author.username.charAt(0)} />
             <View style={styles.userTextBlock}>
-              <Text style={styles.username}>{post.author.username}</Text>
+              <View style={styles.usernameRow}>
+                <Text style={styles.username}>{post.author.username}</Text>
+                {post.eventBadgeUrl ? (
+                  <Image
+                    source={{ uri: post.eventBadgeUrl }}
+                    style={styles.eventBadgeIcon}
+                    contentFit="contain"
+                  />
+                ) : null}
+              </View>
+              {post.isFriend ? (
+                <Text style={styles.friendBadge}>Bạn bè</Text>
+              ) : null}
               {post.location ? (
                 <View style={styles.locationRow}>
                   <Ionicons name="location-outline" size={11} color="#9CA3AF" />
@@ -345,6 +359,23 @@ export function PostCard({ post, attachedQuest = null }: PostCardProps) {
               <Ionicons name="trophy-outline" size={12} color="#fff" />
               <Text style={styles.questRibbonText}>{post.event.title}</Text>
             </Pressable>
+          ) : null}
+          {post.eventRank != null ? (
+            <View
+              style={[
+                styles.rankOverlay,
+                post.eventRank === 1
+                  ? styles.rankOverlayGold
+                  : post.eventRank === 2
+                  ? styles.rankOverlaySilver
+                  : post.eventRank === 3
+                  ? styles.rankOverlayBronze
+                  : styles.rankOverlayDefault,
+              ]}
+            >
+              <Ionicons name="trophy" size={12} color="#fff" />
+              <Text style={styles.rankOverlayText}>#{post.eventRank}</Text>
+            </View>
           ) : null}
         </Pressable>
 
@@ -497,6 +528,11 @@ const styles = StyleSheet.create({
     color: '#11181C',
     fontSize: 13,
     fontWeight: '700',
+  },
+  friendBadge: {
+    color: '#6366F1',
+    fontSize: 10,
+    fontWeight: '600',
   },
   locationRow: {
     alignItems: 'center',
@@ -734,5 +770,43 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     fontSize: 10,
     fontWeight: '600',
+  },
+  usernameRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 5,
+  },
+  eventBadgeIcon: {
+    borderRadius: 10,
+    height: 20,
+    width: 20,
+  },
+  rankOverlay: {
+    alignItems: 'center',
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    position: 'absolute',
+    right: 10,
+    top: 10,
+  },
+  rankOverlayGold: {
+    backgroundColor: 'rgba(180, 120, 0, 0.88)',
+  },
+  rankOverlaySilver: {
+    backgroundColor: 'rgba(100, 110, 125, 0.88)',
+  },
+  rankOverlayBronze: {
+    backgroundColor: 'rgba(140, 80, 30, 0.88)',
+  },
+  rankOverlayDefault: {
+    backgroundColor: 'rgba(17, 24, 28, 0.80)',
+  },
+  rankOverlayText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

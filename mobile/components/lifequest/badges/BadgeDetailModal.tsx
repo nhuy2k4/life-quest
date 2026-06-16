@@ -9,6 +9,7 @@ import {
   View,
   Animated,
   Easing,
+  Image,
 } from 'react-native';
 import ReAnimated, {
   useSharedValue,
@@ -86,11 +87,26 @@ export function BadgeDetailModal({ badge, onClose }: BadgeDetailModalProps) {
               {isHiddenLocked ? (
                 <Text style={styles.lockEmoji}>🔒</Text>
               ) : (
-                <Ionicons
-                  name={(badge.icon_url as any) || 'ribbon-outline'}
-                  size={44}
-                  color={isLocked ? '#D1D5DB' : config.dotColor}
-                />
+                <>
+                  {typeof badge.icon_url === 'string' && (badge.icon_url.startsWith('http://') || badge.icon_url.startsWith('https://')) ? (
+                    <Image
+                      source={{ uri: badge.icon_url }}
+                      style={{
+                        width: 50,
+                        height: 50,
+                        opacity: isLocked ? 0.4 : 1,
+                        tintColor: isLocked ? '#D1D5DB' : undefined,
+                      }}
+                      resizeMode="contain"
+                    />
+                  ) : (
+                    <Ionicons
+                      name={(badge.icon_url as any) || 'ribbon-outline'}
+                      size={44}
+                      color={isLocked ? '#D1D5DB' : config.dotColor}
+                    />
+                  )}
+                </>
               )}
             </View>
 

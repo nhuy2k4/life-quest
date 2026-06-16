@@ -20,12 +20,14 @@ def get_badge_service(db: AsyncSession = Depends(get_db)) -> BadgeService:
 
 @router.get("", response_model=BadgeListResponse)
 async def list_badges(
+	user_id: uuid.UUID | None = Query(default=None, description="Filter by user ID"),
 	category: str | None = Query(default=None, description="Filter by category slug"),
 	current_user: CurrentUser = Depends(get_current_user),
 	service: BadgeService = Depends(get_badge_service),
 ) -> BadgeListResponse:
-	"""Return all active badges with the current user's unlock status and progress."""
-	return await service.get_badges_for_user(user_id=current_user.id, category=category)
+	"""Return all active badges with the specified or current user's unlock status and progress."""
+	target_user_id = user_id or current_user.id
+	return await service.get_badges_for_user(user_id=target_user_id, category=category)
 
 
 @router.get("/featured", response_model=FeaturedBadgeResponse)

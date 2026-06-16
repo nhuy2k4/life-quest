@@ -65,6 +65,7 @@ export function UserProvider({ children }: PropsWithChildren) {
           username: me.username,
           displayName: me.display_name || me.username,
           bio: me.bio || undefined,
+          avatarUrl: me.avatar_url || undefined,
           level: progress.levelId,
           currentXp: progress.currentXp,
           nextLevelXp: progress.nextLevelXp,

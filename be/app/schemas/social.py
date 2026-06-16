@@ -3,6 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.models.enums import PostVisibility
 from app.schemas.common import PaginatedResponse
 from app.schemas.user import UserPublicResponse
 
@@ -32,6 +33,8 @@ class PostCreateRequest(BaseModel):
 	image_url: str | None = None
 	caption: str | None = None
 	location_name: str | None = None
+	visibility: PostVisibility = PostVisibility.PUBLIC
+	is_event: bool = False
 
 
 class PostResponse(BaseModel):
@@ -47,7 +50,11 @@ class PostResponse(BaseModel):
 	comment_count: int
 	liked_by_me: bool = False
 	followed_by_me: bool = False
+	is_friend: bool = False
+	visibility: PostVisibility = PostVisibility.PUBLIC
 	created_at: datetime
+	event_rank: int | None = None
+	event_badge_url: str | None = None
 
 	model_config = {"from_attributes": True}
 

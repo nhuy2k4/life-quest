@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.base import UUIDMixin
+from app.models.enums import PostVisibility, sql_enum
 
 if TYPE_CHECKING:
 	from app.models.poi import Poi
@@ -76,6 +77,12 @@ class Post(Base, UUIDMixin):
 		DateTime(timezone=True),
 		server_default=func.now(),
 		nullable=False,
+	)
+	visibility: Mapped[PostVisibility] = mapped_column(
+		sql_enum(PostVisibility, name="post_visibility_enum"),
+		nullable=False,
+		default=PostVisibility.PUBLIC,
+		server_default=PostVisibility.PUBLIC.value,
 	)
 
 	submission: Mapped["Submission | None"] = relationship("Submission", back_populates="post")

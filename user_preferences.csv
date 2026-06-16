@@ -1,0 +1,24 @@
+"id","user_id","interests","interest_weights","activity_level","location_enabled","notification_enabled"
+"0fcca683-18d0-4cb0-a219-fe608b8652b2","85740ffb-1622-4121-a98b-1b6116381fd0","[""gaming"",""fitness"",""travel"",""food""]","{}","medium",True,True
+"1ea7590a-994f-4929-945f-9626c569c6c4","185b1835-d91b-4419-a6cd-c4c827d8c1b6","[""fitness"",""coffee"",""travel""]","{}","high",True,True
+"23f3a7e1-6449-4d1f-9fba-6c88745d265b","ab60cad1-e040-4a12-941a-a18a4e13271e","[""study"",""music""]","{}","medium",True,True
+"2c21cf59-fdbf-4b9b-bf07-fb97d142de36","9a9ef5ab-ce78-4cd0-b88a-efc774266658","[""music"",""food"",""gaming""]","{}","low",True,True
+"34c65701-f86b-4276-a5c3-557d12c041da","de0fd3ad-a357-47f8-88b8-e15432d54e7c","[""gaming"",""study"",""fitness""]","{}","high",True,True
+"41c30ca5-dbf8-4891-8109-8cfb129be537","38098f3d-c157-4822-839b-51a05e9d6b41","[""coffee"",""food"",""photography"",""travel""]","{}","medium",True,True
+"486e627a-b367-4ff4-88f7-b8f55e20042c","9ab69ee0-0858-4f90-893d-de2d08cc0a11","[""food"",""photography"",""travel"",""fitness""]","{}","low",True,True
+"5d90f401-1a16-41d2-938d-fb6dd45ba715","24640f56-fd93-4f31-bb42-38da40dbb025","[16, 11]","{""16"": 1.0, ""11"": 1.0}","medium",True,True
+"6b879a5a-24da-4a15-9e18-c17ff118c907","fd77e68f-14ac-48f7-abd8-fbb927b1c3cf","[""fitness"",""coffee"",""food"",""photography""]","{}","low",True,True
+"80b16927-027c-43af-9758-d8c635700d00","6300023e-472b-423c-8eda-d43046404a2d","[""travel"",""fitness"",""food"",""gaming""]","{}","medium",True,True
+"90c866e7-c393-42ff-a1f9-0ccda6cea31b","0a16211f-214b-4442-b1de-64f325b9fc3d","[11, 13, 16, 21]","{""11"": 1.0, ""13"": 1.0, ""16"": 1.0, ""21"": 1.0}","medium",True,True
+"9313fa5c-6d0f-4562-b8da-7245851ec92e","f835848c-f5f0-4ae2-99da-27b636f1cc00","[""travel"",""study"",""gaming"",""music""]","{}","low",True,True
+"9ca9f3cf-ccbb-47ea-9916-b0772c4150c8","c747aaf0-7fc0-4076-bf4d-385d4fe12f18","[""fitness"",""study"",""coffee"",""travel""]","{}","high",True,True
+"9dc66837-06f6-4d0b-9551-30b5ebf9859b","af4f7971-ba76-4796-9f8f-7c8dd2c23852","[""coffee"",""travel"",""photography""]","{}","medium",True,True
+"a5ab0cd0-bba2-408f-8a19-bfe7371a23e1","85822936-c03d-4df8-beed-d1568fb26232","[""fitness"",""gaming"",""music"",""study""]","{}","medium",True,True
+"ad95b4cb-2ce4-4e7f-ad62-3a5abde5f521","f769094e-095b-4fea-92ec-8f234e35dde6","[""music"",""coffee"",""photography"",""study""]","{}","high",True,True
+"b068c14d-ff2b-4a40-a73c-2c0920219b8c","8218f4c2-42c3-4216-aa16-aa0f70978db6","[22, 19, 18, 17]","{""22"": 1.0, ""19"": 1.0, ""18"": 1.0, ""17"": 1.0}","medium",True,True
+"bb75a4ed-793f-4f63-8a5f-42609129584b","1c44e3ea-7a6c-4bb5-8a39-63459699ee7a","[""fitness"",""food""]","{}","medium",True,True
+"bddb92d1-5cea-407e-9bc5-48f95b4d893b","6ad1ddd1-3fd2-4cb5-81f7-189769288aa3","[""photography"",""study"",""music"",""coffee""]","{}","high",True,True
+"c8f11e13-b5bf-4ad1-bd04-c31625a7d48a","194e8822-7357-4165-8c52-25ba7dd6d596","[""travel"",""gaming""]","{}","high",True,True
+"cfdb76ff-080b-41c0-b93a-41d6ba7fcbff","44dfeb15-bf64-4cb6-a3dc-b33d58b9ab95","[""study"",""music"",""coffee"",""gaming""]","{}","high",True,True
+"e24a8103-b8db-4338-90db-16c418d8bbda","2d9dbb09-43ee-4f61-8092-5c800a3bbbdf","[""coffee"",""photography""]","{}","low",True,True
+"f5ffcfca-6b81-4be2-bd3a-4668c4cfb5fd","1963ff6a-8bac-4924-9c35-8970e902106d","[""food"",""photography"",""music""]","{}","medium",True,True

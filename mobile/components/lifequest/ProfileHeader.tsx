@@ -88,6 +88,24 @@ export function ProfileHeader({
           </View>
         </View>
 
+        <Pressable
+          onPress={() => {
+            // @ts-ignore
+            import('expo-router').then(({ router }) => {
+              router.push({
+                pathname: '/(main)/friends',
+                params: { userId: user.id },
+              });
+            });
+          }}
+          style={styles.friendsButton}
+        >
+          <Ionicons name="people-outline" size={16} color={isDark ? '#ECEDEE' : '#4B5563'} />
+          <Text style={[styles.friendsButtonText, isDark ? styles.textDark : styles.textLight]}>
+            Xem bạn bè
+          </Text>
+        </Pressable>
+
         {!isSelf ? (
           <Pressable
             onPress={onToggleFollow}
@@ -195,4 +213,19 @@ const styles = StyleSheet.create({
   followTextMuted: { color: '#374151' },
   textLight: { color: '#11181C' },
   textDark: { color: '#ECEDEE' },
+  friendsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    marginTop: 4,
+    gap: 6,
+  },
+  friendsButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
 });

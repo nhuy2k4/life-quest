@@ -4,6 +4,7 @@ import type { Post } from '@/types';
 export type FeedUser = {
   id: string;
   username: string;
+  avatar_url?: string | null;
 };
 
 export type FeedPost = {
@@ -19,9 +20,13 @@ export type FeedPost = {
   comment_count: number;
   liked_by_me: boolean;
   followed_by_me: boolean;
+  is_friend?: boolean;
   created_at: string;
+  visibility?: 'public' | 'friends' | 'private';
   final_score?: number;
   reasons?: string[];
+  event_rank?: number | null;
+  event_badge_url?: string | null;
 };
 
 export type FeedResponse = {
@@ -33,11 +38,15 @@ export type FeedResponse = {
 };
 
 export function mapFeedPost(post: FeedPost): Post {
+  if (post.event_rank != null || post.event_badge_url != null) {
+    console.log('[Feed] event post:', post.id, 'rank:', post.event_rank, 'badge:', post.event_badge_url);
+  }
   return {
     id: post.id,
     author: {
       id: post.user.id,
       username: post.user.username,
+      avatarUrl: post.user.avatar_url ?? undefined,
     },
     submissionId: post.submission_id ?? undefined,
     imageUrl: post.submission_image_url ?? undefined,
@@ -59,13 +68,17 @@ export function mapFeedPost(post: FeedPost): Post {
           title: post.event.title,
         }
       : undefined,
+    visibility: post.visibility || 'public',
     createdAt: post.created_at,
     likesCount: post.like_count,
     commentsCount: post.comment_count,
     isLiked: post.liked_by_me,
     followedByMe: post.followed_by_me,
+    isFriend: post.is_friend,
     recommendationReasons: post.reasons,
     recommendationScore: post.final_score,
+    eventRank: post.event_rank ?? undefined,
+    eventBadgeUrl: post.event_badge_url ?? undefined,
   };
 }
 
@@ -122,6 +135,7 @@ export type PostResponse = {
   comment_count: number;
   liked_by_me: boolean;
   followed_by_me: boolean;
+  visibility?: 'public' | 'friends' | 'private';
   created_at: string;
 };
 
@@ -138,6 +152,7 @@ export type EventListItem = {
 export type EventDetail = EventListItem & {
   reward_config: { rank_from: number; rank_to: number; bonus_xp: number; badge_id?: string | null }[];
   quests: { id: string; title: string; description?: string | null; xp_reward: number }[];
+  is_joined?: boolean;
 };
 
 export type EventLeaderboardItem = {
@@ -156,8 +171,9 @@ export type EventLeaderboardResponse = {
   total: number;
 };
 
-export async function getActiveEvents(token: string): Promise<EventListItem[]> {
-  return requestJson<EventListItem[]>('/events?status=active', {
+export async function getEvents(token: string, status?: 'draft' | 'active' | 'ended'): Promise<EventListItem[]> {
+  const url = status ? `/events?status=${status}` : '/events';
+  return requestJson<EventListItem[]>(url, {
     method: 'GET',
     token,
   });
@@ -203,6 +219,8 @@ export async function createPost(
     locationName?: string | null;
     questId?: string | null;
     poiId?: string | null;
+    visibility?: 'public' | 'friends' | 'private';
+    isEvent?: boolean;
   }
 ): Promise<PostResponse> {
   return requestJson<PostResponse>('/social/posts', {
@@ -215,6 +233,8 @@ export async function createPost(
       location_name: payload.locationName || undefined,
       quest_id: payload.questId || undefined,
       poi_id: payload.poiId || undefined,
+      visibility: payload.visibility || 'public',
+      is_event: payload.isEvent || undefined,
     }),
   });
 }
@@ -296,9 +316,29 @@ export async function unfollowUser(token: string, userId: string): Promise<void>
   });
 }
 
+export async function getFriends(token: string, userId: string, page = 1, pageSize = 20): Promise<{ items: FeedUser[]; total: number; page: number; page_size: number }> {
+  return requestJson(`/social/users/${userId}/friends?page=${page}&page_size=${pageSize}`, {
+    method: 'GET',
+    token,
+  });
+}
+
 export async function deletePost(token: string, postId: string): Promise<void> {
   await requestJson(`/social/posts/${postId}`, {
     method: 'DELETE',
     token,
   });
+}
+
+export async function getUserAwards(token: string, userId: string, page = 1, pageSize = 20): Promise<FeedPage> {
+  const response = await requestJson<FeedResponse>(`/social/users/${userId}/awards?page=${page}&page_size=${pageSize}`, {
+    method: 'GET',
+    token,
+  });
+
+  return {
+    items: response.items.map(mapFeedPost),
+    page: response.page,
+    hasNext: response.has_next,
+  };
 }

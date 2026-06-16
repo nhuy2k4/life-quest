@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, Image } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -60,7 +60,8 @@ export function BadgeIcon({ badge, size = 72, isNew = false, showLabel = true }:
   }));
 
   const iconSize = Math.round(size * ICON_SIZE_RATIO);
-  const iconName = (icon_url as any) || 'ribbon-outline';
+  const isImage = typeof icon_url === 'string' && (icon_url.startsWith('http://') || icon_url.startsWith('https://'));
+  const iconName = isImage ? 'ribbon-outline' : ((icon_url as any) || 'ribbon-outline');
 
   // Hidden and locked rendering
   if (is_hidden && !is_unlocked) {
@@ -131,11 +132,24 @@ export function BadgeIcon({ badge, size = 72, isNew = false, showLabel = true }:
             },
           ]}
         >
-          <Ionicons
-            name={iconName}
-            size={iconSize}
-            color={isLocked ? '#6B7280' : config.borderColor}
-          />
+          {isImage ? (
+            <Image
+              source={{ uri: icon_url }}
+              style={{
+                width: size * 0.65,
+                height: size * 0.65,
+                opacity: isLocked ? 0.3 : 1,
+                tintColor: isLocked ? '#6B7280' : undefined,
+              }}
+              resizeMode="contain"
+            />
+          ) : (
+            <Ionicons
+              name={iconName}
+              size={iconSize}
+              color={isLocked ? '#6B7280' : config.borderColor}
+            />
+          )}
           {/* "NEW" badge for newly unlocked */}
           {isNew && !isLocked ? (
             <View style={styles.newBadge}>

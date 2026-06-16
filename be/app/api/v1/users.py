@@ -58,6 +58,44 @@ async def get_public_profile(
 	return UserPublicProfileDataResponse(data=profile)
 
 
+from app.services.social.social_service import SocialService
+from app.schemas.social import FollowListResponse, FeedResponse
+from fastapi import Query
+
+def get_social_service(db: AsyncSession = Depends(get_db)) -> SocialService:
+	return SocialService(db)
+
+@router.get("/{target_user_id}/friends", response_model=FollowListResponse)
+async def list_friends(
+	target_user_id: UUID,
+	page: int = Query(default=1, ge=1),
+	page_size: int = Query(default=20, ge=1, le=100),
+	current_user: CurrentUser = Depends(get_current_user),
+	social_service: SocialService = Depends(get_social_service),
+) -> FollowListResponse:
+	return await social_service.list_friends(
+		user_id=current_user.id,
+		target_user_id=target_user_id,
+		page=page,
+		page_size=page_size,
+	)
+
+
+@router.get("/{target_user_id}/awards", response_model=FeedResponse)
+async def get_user_awards(
+	target_user_id: UUID,
+	page: int = Query(default=1, ge=1),
+	page_size: int = Query(default=20, ge=1, le=100),
+	current_user: CurrentUser = Depends(get_current_user),
+	social_service: SocialService = Depends(get_social_service),
+) -> FeedResponse:
+	return await social_service.get_user_awards(
+		user_id=current_user.id,
+		target_user_id=target_user_id,
+		page=page,
+		page_size=page_size,
+	)
+
 @router.patch(
 	"/me",
 	summary="Cập nhật profile user hiện tại",

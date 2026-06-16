@@ -25,13 +25,17 @@ export interface Post {
     title: string;
   };
   createdAt: string;
+  visibility?: 'public' | 'friends' | 'private';
   likesCount: number;
   commentsCount: number;
   isLiked?: boolean;
   isSaved?: boolean;
   followedByMe?: boolean;
+  isFriend?: boolean;
   recommendationReasons?: string[];
   recommendationScore?: number;
+  eventRank?: number;
+  eventBadgeUrl?: string;
 }
 
 export interface Comment {

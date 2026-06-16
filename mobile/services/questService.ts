@@ -29,6 +29,7 @@ export type QuestDetail = {
   poi_bonus_xp: number;
   total_xp_with_poi: number;
   poi_required: boolean;
+  is_event?: boolean;
 
   is_active: boolean;
   user_status: 'not_started' | 'started' | 'submitted' | 'approved' | 'rejected';
@@ -112,7 +113,7 @@ export async function startQuest(token: string, questId: string, poiId?: string 
 export async function submitQuest(
   token: string,
   questId: string,
-  payload: { imageUrl: string; cloudinaryPublicId: string; fileHash: string; lat?: number; lng?: number; poiId?: string | null; postId?: string | null }
+  payload: { imageUrl: string; cloudinaryPublicId: string; fileHash: string; lat?: number; lng?: number; poiId?: string | null; postId?: string | null; isEvent?: boolean }
 ): Promise<SubmitQuestResponse> {
   return requestJson<SubmitQuestResponse>(`/quests/${questId}/submit`, {
     method: 'POST',
@@ -125,6 +126,7 @@ export async function submitQuest(
       poi_id: payload.poiId || undefined,
       lat: payload.lat,
       lng: payload.lng,
+      is_event: payload.isEvent || undefined,
     }),
   });
 }

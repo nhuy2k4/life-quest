@@ -24,6 +24,7 @@ export default function QuestDetailScreen() {
   const params = useLocalSearchParams();
   const questId = typeof params.questId === 'string' ? params.questId : undefined;
   const poiId = typeof params.poiId === 'string' ? params.poiId : undefined;
+  const isEvent = params.isEvent === 'true';
   const routePoiName = typeof params.poiName === 'string' ? params.poiName : undefined;
   const recommendationRequestId = typeof params.recommendationRequestId === 'string' ? params.recommendationRequestId : undefined;
   const recommendationSection = typeof params.recommendationSection === 'string' ? params.recommendationSection as RecommendationSectionKey : undefined;
@@ -44,10 +45,17 @@ const [totalXpWithPoi, setTotalXpWithPoi] = useState(0);
   const [poiRequired, setPoiRequired] = useState(false);
   const [poiName, setPoiName] = useState<string | null>(null);
   const [effectivePoiId, setEffectivePoiId] = useState<string | null>(poiId ?? null);
+  const [isEventQuestFromServer, setIsEventQuestFromServer] = useState(false);
 
 
   const handleStartQuest = async () => {
     if (!questId) return;
+
+    if (isEventQuestFromServer && !isEvent && userStatus === 'not_started') {
+      router.back();
+      return;
+    }
+
     setIsStarting(true);
 
     try {
@@ -89,6 +97,7 @@ const [totalXpWithPoi, setTotalXpWithPoi] = useState(0);
         xp: questXp,
         poi_id: effectivePoiId,
         poi_name: poiName,
+        isEvent,
       });
       router.push(ROUTES.main.camera as Href);
     } finally {
@@ -126,6 +135,7 @@ setTotalXpWithPoi(detail.total_xp_with_poi);
         setPoiRequired(hasLocationContext);
         setPoiName(nextPoiName);
         setEffectivePoiId(nextPoiId);
+        setIsEventQuestFromServer(!!detail.is_event);
 
       } finally {
         setIsLoading(false);
@@ -136,6 +146,17 @@ setTotalXpWithPoi(detail.total_xp_with_poi);
   }, [questId, poiId, routePoiName]);
 
   const { statusLabel, buttonTitle, isButtonDisabled, buttonVariant } = useMemo(() => {
+    console.log('[QuestDetail] isEventQuestFromServer:', isEventQuestFromServer, 'isEvent:', isEvent, 'userStatus:', userStatus);
+
+    if (isEventQuestFromServer && !isEvent && userStatus === 'not_started') {
+      return {
+        statusLabel: 'Event Quest',
+        buttonTitle: 'Back to feed',
+        isButtonDisabled: false,
+        buttonVariant: 'primary' as const,
+      };
+    }
+
     switch (userStatus) {
       case 'approved':
         return {
@@ -173,7 +194,7 @@ setTotalXpWithPoi(detail.total_xp_with_poi);
           buttonVariant: 'primary' as const,
         };
     }
-  }, [userStatus]);
+  }, [userStatus, isEventQuestFromServer, isEvent]);
 
   return (
 
@@ -219,7 +240,17 @@ setTotalXpWithPoi(detail.total_xp_with_poi);
             ) : null}
           </View>
 
-          {poiRequired ? (
+          {isEventQuestFromServer ? (
+            <View style={styles.locationReqCardEvent}>
+              <View style={styles.locationReqHeader}>
+                <Ionicons name="calendar" size={16} color="#7C3AED" />
+                <Text style={styles.locationReqTitleEvent}>Nhiệm vụ Event</Text>
+              </View>
+              <Text style={styles.locationReqDescEvent}>
+                Đây là nhiệm vụ dành riêng cho sự kiện. Bạn cần tham gia sự kiện và chụp ảnh tại khu vực Đà Nẵng để hoàn thành nhiệm vụ này và nhận {baseXp} XP.
+              </Text>
+            </View>
+          ) : poiRequired ? (
             <View style={styles.locationReqCard}>
               <View style={styles.locationReqHeader}>
                 <Ionicons name="location" size={16} color="#10B981" />
@@ -242,14 +273,16 @@ setTotalXpWithPoi(detail.total_xp_with_poi);
           )}
 
           <View style={styles.actionsWrap}>
-            <LQButton 
-              title={buttonTitle} 
-              variant={buttonVariant} 
-              disabled={isButtonDisabled}
-              fullWidth 
-              onPress={handleStartQuest} 
-              loading={isStarting} 
-            />
+            {!(isEventQuestFromServer && !isEvent && userStatus === 'not_started') && (
+              <LQButton 
+                title={buttonTitle} 
+                variant={buttonVariant} 
+                disabled={isButtonDisabled}
+                fullWidth 
+                onPress={handleStartQuest} 
+                loading={isStarting} 
+              />
+            )}
 
             <LQButton
               title="Back to Feed"
@@ -399,6 +432,24 @@ const styles = StyleSheet.create({
   },
   locationReqDescBase: {
     color: '#B45309',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  locationReqCardEvent: {
+    backgroundColor: '#F5F3FF',
+    borderColor: '#C4B5FD',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    gap: 6,
+  },
+  locationReqTitleEvent: {
+    color: '#5B21B6',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  locationReqDescEvent: {
+    color: '#6D28D9',
     fontSize: 13,
     lineHeight: 18,
   },

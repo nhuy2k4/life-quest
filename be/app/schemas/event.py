@@ -72,6 +72,7 @@ class EventDetailResponse(BaseModel):
 	status: EventStatus
 	reward_config: list[EventRewardTier]
 	quests: list[EventQuestItem]
+	is_joined: bool = False
 
 	model_config = {"from_attributes": True}
 
