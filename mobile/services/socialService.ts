@@ -135,6 +135,9 @@ export type PostResponse = {
   comment_count: number;
   liked_by_me: boolean;
   followed_by_me: boolean;
+  is_friend?: boolean;
+  event_rank?: number | null;
+  event_badge_url?: string | null;
   visibility?: 'public' | 'friends' | 'private';
   created_at: string;
 };
@@ -299,7 +302,15 @@ export async function addComment(token: string, postId: string, content: string)
     token,
     body: JSON.stringify({ content }),
   });
-  return mapFeedPost(response);
+  return mapFeedPost(response as FeedPost);
+}
+
+export async function getPost(token: string, postId: string): Promise<Post> {
+  const response = await requestJson<PostResponse>(`/social/posts/${postId}`, {
+    method: 'GET',
+    token,
+  });
+  return mapFeedPost(response as FeedPost);
 }
 
 export async function followUser(token: string, userId: string): Promise<void> {

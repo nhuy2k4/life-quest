@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps.auth import CurrentUser, get_current_user
@@ -54,6 +55,93 @@ async def create_post(
 	service: SocialService = Depends(get_social_service),
 ) -> PostResponse:
 	return await service.create_post(user_id=current_user.id, payload=payload)
+
+
+@router.get("/posts/{post_id}", response_model=PostResponse)
+async def get_post(
+	post_id: uuid.UUID,
+	current_user: CurrentUser = Depends(get_current_user),
+	service: SocialService = Depends(get_social_service),
+) -> PostResponse:
+	return await service.get_post_by_id(user_id=current_user.id, post_id=post_id)
+
+
+@router.get("/posts/{post_id}/share", response_class=HTMLResponse)
+async def share_post_redirect(post_id: uuid.UUID) -> HTMLResponse:
+	html_content = f"""
+	<!DOCTYPE html>
+	<html>
+	<head>
+	  <meta charset="utf-8">
+	  <meta name="viewport" content="width=device-width, initial-scale=1">
+	  <title>Mở bài viết trong LifeQuest</title>
+	  <style>
+		body {{
+		  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+		  display: flex;
+		  flex-direction: column;
+		  align-items: center;
+		  justify-content: center;
+		  height: 100vh;
+		  margin: 0;
+		  background-color: #F9FAFB;
+		  color: #11181C;
+		  padding: 20px;
+		  box-sizing: border-box;
+		}}
+		.container {{
+		  text-align: center;
+		  max-width: 400px;
+		  background: white;
+		  padding: 30px;
+		  border-radius: 16px;
+		  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+		}}
+		h1 {{
+		  font-size: 20px;
+		  margin-bottom: 10px;
+		}}
+		p {{
+		  color: #6B7280;
+		  font-size: 14px;
+		  margin-bottom: 24px;
+		  line-height: 1.5;
+		}}
+		.btn {{
+		  display: inline-block;
+		  background-color: #6366F1;
+		  color: white;
+		  padding: 12px 24px;
+		  border-radius: 8px;
+		  text-decoration: none;
+		  font-weight: 600;
+		  font-size: 15px;
+		  transition: background-color 0.2s;
+		}}
+		.btn:hover {{
+		  background-color: #4F46E5;
+		}}
+	  </style>
+	  <script>
+		window.onload = function() {{
+		  var appUrl = "lifequestmobile://post-detail?postId={post_id}";
+		  window.location.href = appUrl;
+		  setTimeout(function() {{
+			window.location.replace(appUrl);
+		  }}, 500);
+		}};
+	  </script>
+	</head>
+	<body>
+	  <div class="container">
+		<h1>Đang mở LifeQuest...</h1>
+		<p>Nếu ứng dụng không tự động mở, hãy bấm vào nút bên dưới để xem bài viết.</p>
+		<a class="btn" href="lifequestmobile://post-detail?postId={post_id}">Mở ứng dụng LifeQuest</a>
+	  </div>
+	</body>
+	</html>
+	"""
+	return HTMLResponse(content=html_content)
 
 
 @router.delete("/posts/{post_id}", response_model=FollowResponse)

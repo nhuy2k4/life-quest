@@ -10,7 +10,8 @@ import { ImageWithFallback } from '@/components/lifequest/ImageWithFallback';
 import { Avatar } from '@/components/ui/avatar';
 import { ROUTES } from '@/constants/routes';
 import { usePostContext } from '@/contexts/PostContext';
-import { likePost, unlikePost } from '@/services/socialService';
+import { getPost, likePost, unlikePost } from '@/services/socialService';
+import type { Post } from '@/types';
 import { getItem, StorageKeys } from '@/utils/storage';
 
 export default function PostDetailScreen() {
@@ -19,22 +20,61 @@ export default function PostDetailScreen() {
   const { posts, setPosts } = usePostContext();
   const postId = typeof params.postId === 'string' ? params.postId : undefined;
   const matched = useMemo(() => posts.find((item) => item.id === postId), [posts, postId]);
-  const [liked, setLiked] = useState(Boolean(matched?.isLiked));
+  const [fetchedPost, setFetchedPost] = useState<Post | null>(null);
+  const [loading, setLoading] = useState(false);
+  const post = matched || fetchedPost;
+
+  const [liked, setLiked] = useState(Boolean(post?.isLiked));
   const [saved, setSaved] = useState(false);
   const [commentOpen, setCommentOpen] = useState(false);
-  const [likeCount, setLikeCount] = useState(matched?.likesCount ?? 0);
-  const [commentCount, setCommentCount] = useState(matched?.commentsCount ?? 0);
+  const [likeCount, setLikeCount] = useState(post?.likesCount ?? 0);
+  const [commentCount, setCommentCount] = useState(post?.commentsCount ?? 0);
 
   useEffect(() => {
-    setLiked(Boolean(matched?.isLiked));
-    setLikeCount(matched?.likesCount ?? 0);
-  }, [matched?.isLiked, matched?.likesCount]);
+    setLiked(Boolean(post?.isLiked));
+    setLikeCount(post?.likesCount ?? 0);
+  }, [post?.isLiked, post?.likesCount]);
 
   useEffect(() => {
-    setCommentCount(matched?.commentsCount ?? 0);
-  }, [matched?.commentsCount]);
+    setCommentCount(post?.commentsCount ?? 0);
+  }, [post?.commentsCount]);
 
-  if (!matched) {
+  useEffect(() => {
+    if (!postId) return;
+    const fetchPostData = async () => {
+      const token = await getItem<string>(StorageKeys.accessToken);
+      if (!token) return;
+      setLoading(true);
+      try {
+        const fetched = await getPost(token, postId);
+        setFetchedPost(fetched);
+      } catch (error) {
+        console.error('Failed to fetch post:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPostData();
+  }, [postId]);
+
+  if (loading && !post) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} style={styles.iconButton}>
+            <Ionicons name="arrow-back" size={20} color="#11181C" />
+          </Pressable>
+          <Text style={styles.headerTitle}>Post</Text>
+          <View style={styles.iconButton} />
+        </View>
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyText}>Loading post...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!post) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
@@ -52,19 +92,19 @@ export default function PostDetailScreen() {
   }
 
   const display = {
-    id: matched.id,
-    authorId: matched.author.id,
-    username: matched.author.username,
-    image: matched.imageUrl,
-    caption: matched.caption ?? '',
-    location: matched.location,
+    id: post.id,
+    authorId: post.author.id,
+    username: post.author.username,
+    image: post.imageUrl,
+    caption: post.caption ?? '',
+    location: post.location,
     likes: likeCount,
     comments: commentCount,
-    timeAgo: matched.createdAt,
-    quest: matched.quest,
-    event: matched.event,
-    eventRank: matched.eventRank,
-    eventBadgeUrl: matched.eventBadgeUrl,
+    timeAgo: post.createdAt,
+    quest: post.quest,
+    event: post.event,
+    eventRank: post.eventRank,
+    eventBadgeUrl: post.eventBadgeUrl,
   };
 
   const handleLike = async () => {
@@ -142,7 +182,7 @@ export default function PostDetailScreen() {
             <Pressable
               style={styles.userInfo}
               onPress={() => router.push(ROUTES.otherProfile(display.authorId) as Href)}>
-              <Avatar size={40} uri={matched.author.avatarUrl} label={display.username.charAt(0)} />
+              <Avatar size={40} uri={post.author.avatarUrl} label={display.username.charAt(0)} />
               <View>
                 <View style={styles.usernameRow}>
                   <Text style={styles.username}>{display.username}</Text>
@@ -154,10 +194,15 @@ export default function PostDetailScreen() {
                     />
                   ) : null}
                 </View>
-                <View style={styles.locationRow}>
-                  <Ionicons name="location-outline" size={11} color="#9CA3AF" />
-                  <Text style={styles.locationText}>{display.location}</Text>
-                </View>
+                {post.isFriend ? (
+                  <Text style={styles.friendBadge}>Bạn bè</Text>
+                ) : null}
+                {display.location ? (
+                  <View style={styles.locationRow}>
+                    <Ionicons name="location-outline" size={11} color="#9CA3AF" />
+                    <Text style={styles.locationText}>{display.location}</Text>
+                  </View>
+                ) : null}
               </View>
             </Pressable>
             <Text style={styles.timeAgo}>{display.timeAgo}</Text>
@@ -347,6 +392,12 @@ const styles = StyleSheet.create({
     color: '#11181C',
     fontSize: 14,
     fontWeight: '700',
+  },
+  friendBadge: {
+    color: '#6366F1',
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 1,
   },
   locationRow: {
     alignItems: 'center',

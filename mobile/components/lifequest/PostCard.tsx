@@ -241,7 +241,9 @@ export function PostCard({ post, attachedQuest = null }: PostCardProps) {
   };
 
   const onCopyLink = async () => {
-    const url = Linking.createURL(`post/${post.id}`);
+    const rawBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api/v1';
+    const baseUrl = rawBaseUrl.replace(/\/+$/, '');
+    const url = `${baseUrl}/social/posts/${post.id}/share`;
     await Clipboard.setStringAsync(url);
     showToast('Copied link.');
     setMenuOpen(false);

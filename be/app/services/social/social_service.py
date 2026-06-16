@@ -418,6 +418,35 @@ class SocialService:
 			counts=counts,
 		)
 
+	async def get_post_by_id(self, *, user_id: uuid.UUID, post_id: uuid.UUID) -> PostResponse:
+		post = await self._get_post(post_id)
+		if post is None:
+			raise NotFoundException("Post không tồn tại")
+
+		# Apply visibility check
+		if post.visibility == PostVisibility.FRIENDS and post.user_id != user_id:
+			friend_ids = await self._get_friend_ids(user_id=user_id)
+			if post.user_id not in friend_ids:
+				raise ForbiddenException("Bạn không có quyền xem post này")
+		elif post.visibility == PostVisibility.PRIVATE and post.user_id != user_id:
+			raise ForbiddenException("Bạn không có quyền xem post này")
+
+		liked_post_ids = await self._get_liked_post_ids(user_id=user_id, post_ids=[post.id])
+		following_ids = await self._get_following_ids(user_id=user_id)
+		friend_ids = await self._get_friend_ids(user_id=user_id)
+		counts = (await self._get_post_counts(post_ids=[post.id])).get(post.id)
+		event_result_map = await self._get_event_result_map([post])
+
+		return self._to_post_response(
+			post,
+			liked_by_me=post.id in liked_post_ids,
+			followed_by_me=post.user_id in following_ids,
+			is_friend=post.user_id in friend_ids,
+			counts=counts,
+			event_rank=event_result_map.get((post.user_id, post.event_id), (None, None))[0] if post.event_id else None,
+			event_badge_url=event_result_map.get((post.user_id, post.event_id), (None, None))[1] if post.event_id else None,
+		)
+
 	async def list_comments(
 		self,
 		*,

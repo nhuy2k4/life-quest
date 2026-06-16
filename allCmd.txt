@@ -12,4 +12,4 @@ sql:
 del:
 "C:\Program Files\PostgreSQL\17\bin\psql.exe" "postgresql://lifequest_h2y8_user:iahpMGhIKr93uf511eQJz2rFodk7hRYI@dpg-d8ggu0d8nd3s73902cvg-a.singapore-postgres.render.com/lifequest_h2y8?sslmode=require" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 create: 
-& "C:\Program Files\PostgreSQL\17\bin\psql.exe" "postgresql://lifequest_h2y8_user:iahpMGhIKr93uf511eQJz2rFodk7hRYI@dpg-d8ggu0d8nd3s73902cvg-a.singapore-postgres.render.com/lifequest_h2y8" -f "C:\Users\Bui Nhat Huy\OneDrive\Máy tính\lifequest.sql"     
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" "postgresql://lifequest_h2y8_user:iahpMGhIKr93uf511eQJz2rFodk7hRYI@dpg-d8ggu0d8nd3s73902cvg-a.singapore-postgres.render.com/lifequest_h2y8" -f "C:\Users\Bui Nhat Huy\OneDrive\Máy tính\lq2.sql"     
