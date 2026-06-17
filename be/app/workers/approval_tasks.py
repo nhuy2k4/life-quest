@@ -214,11 +214,12 @@ async def _process_submission_ai(submission_id: str) -> None:
 			submission.status = SubmissionStatus.REJECTED
 			# Thay vì khóa cứng REJECTED, đưa về NOT_STARTED để user được phép Try Again/Làm lại luôn
 			submission.user_quest.status = UserQuestStatus.REJECTED
-			await session.execute(
-				Post.__table__.update()
-				.where(Post.submission_id == submission.id)
-				.values(event_id=None)
-			)
+			# Keep event_id linked even if the submission is rejected so it shows as Not eligible in Event Details
+			# await session.execute(
+			# 	Post.__table__.update()
+			# 	.where(Post.submission_id == submission.id)
+			# 	.values(event_id=None)
+			# )
 
 			consolation_awarded = 0
 			if decision.decision == ApprovalDecisionType.REJECT:

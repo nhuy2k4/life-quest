@@ -26,6 +26,7 @@ from app.schemas.social import (
 	FeedResponse,
 	FollowListResponse,
 	PostCreateRequest,
+	PostUpdateRequest,
 	PostQuestInfo,
 	PostEventInfo,
 	PostResponse,
@@ -223,8 +224,6 @@ class SocialService:
 					raise NotFoundException("Quest khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ bá»‹ táº¯t")
 
 			effective_poi_id = payload.poi_id
-			if quest is not None and not quest.location_required:
-				effective_poi_id = None
 
 			if effective_poi_id:
 				poi = await self.db.scalar(select(Poi).where(Poi.id == effective_poi_id, Poi.is_active.is_(True)))
@@ -287,6 +286,40 @@ class SocialService:
 			raise NotFoundException("Post không tồn tại")
 		counts = (await self._get_post_counts(post_ids=[stored.id])).get(stored.id)
 		return self._to_post_response(stored, liked_by_me=False, counts=counts)
+
+	async def update_post(self, *, user_id: uuid.UUID, post_id: uuid.UUID, payload: PostUpdateRequest) -> PostResponse:
+		post = await self._get_post(post_id)
+		if post is None:
+			raise NotFoundException("Post không tồn tại")
+		if post.user_id != user_id:
+			raise ForbiddenException("Bạn không có quyền sửa post này")
+
+		# If it's linked to an active event, visibility must remain PUBLIC
+		if post.event_id is not None and payload.visibility is not None and payload.visibility != PostVisibility.PUBLIC:
+			raise BadRequestException("Không thể đổi chế độ riêng tư của bài viết đang tham gia sự kiện")
+
+		if payload.caption is not None:
+			post.caption = payload.caption
+		if payload.visibility is not None:
+			post.visibility = payload.visibility
+
+		await self.db.commit()
+
+		liked_post_ids = await self._get_liked_post_ids(user_id=user_id, post_ids=[post.id])
+		following_ids = await self._get_following_ids(user_id=user_id)
+		friend_ids = await self._get_friend_ids(user_id=user_id)
+		counts = (await self._get_post_counts(post_ids=[post.id])).get(post.id)
+		event_result_map = await self._get_event_result_map([post])
+
+		return self._to_post_response(
+			post,
+			liked_by_me=post.id in liked_post_ids,
+			followed_by_me=post.user_id in following_ids,
+			is_friend=post.user_id in friend_ids,
+			counts=counts,
+			event_rank=event_result_map.get((post.user_id, post.event_id), (None, None))[0] if post.event_id else None,
+			event_badge_url=event_result_map.get((post.user_id, post.event_id), (None, None))[1] if post.event_id else None,
+		)
 
 	async def delete_post(self, *, user_id: uuid.UUID, post_id: uuid.UUID) -> None:
 		post = await self.db.scalar(select(Post).where(Post.id == post_id))
@@ -909,13 +942,17 @@ class SocialService:
 				title=post.event.title,
 			)
 
+		is_eligible = True
+		if post.submission and post.submission.status == SubmissionStatus.REJECTED:
+			is_eligible = False
+
 		like_count, comment_count = counts if counts is not None else (post.like_count, post.comment_count)
 		return PostResponse(
 			id=post.id,
 			submission_id=post.submission_id,
 			submission_image_url=submission_image_url,
 			caption=post.caption,
-			location_name=post.location_name or post_poi_name,
+			location_name=post.location_name or post_poi_name or submission_poi_name,
 			quest=quest_info,
 			event=event_info,
 			user=UserPublicResponse.model_validate(post.user),
@@ -928,6 +965,7 @@ class SocialService:
 			created_at=post.created_at,
 			event_rank=event_rank,
 			event_badge_url=event_badge_url,
+			is_eligible=is_eligible,
 		)
 
 	@staticmethod

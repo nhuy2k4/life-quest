@@ -69,7 +69,12 @@ export default function ChatInboxScreen() {
               onPress={() =>
                 router.push({
                   pathname: ROUTES.modal.chatDetail as any,
-                  params: { conversationId: item.id, username: item.other_user.username },
+                  params: {
+                    conversationId: item.id,
+                    targetUserId: item.other_user.id,
+                    username: item.other_user.username,
+                    avatarUrl: item.other_user.avatar_url ?? undefined,
+                  },
                 })
               }
             >

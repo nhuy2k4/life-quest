@@ -40,21 +40,47 @@ class EventService:
 		self.db = db
 		self.social_service = SocialService(db)
 
-	async def list_events(self, *, status: str | None = None) -> list[EventListItem]:
+	async def list_events(self, *, status: str | None = None, is_admin: bool = False) -> list[EventListItem]:
 		await self._finalize_overdue_events()
 		stmt = select(Event)
 		now = datetime.now(timezone.utc)
 
-		if status == EventStatus.ACTIVE:
-			stmt = stmt.where(
-				Event.status == EventStatus.ACTIVE,
-				Event.start_at <= now,
-				Event.end_at >= now,
-			)
-		elif status == EventStatus.ENDED:
-			stmt = stmt.where(Event.status == EventStatus.ENDED)
-		elif status == EventStatus.DRAFT:
-			stmt = stmt.where(Event.status == EventStatus.DRAFT)
+		if is_admin:
+			if status == EventStatus.ACTIVE:
+				stmt = stmt.where(
+					Event.status == EventStatus.ACTIVE,
+					Event.start_at <= now,
+					Event.end_at >= now,
+				)
+			elif status == EventStatus.ENDED:
+				stmt = stmt.where(Event.status == EventStatus.ENDED)
+			elif status == EventStatus.DRAFT:
+				stmt = stmt.where(Event.status == EventStatus.DRAFT)
+		else:
+			# Non-admins: DRAFT events are completely hidden.
+			# Upcoming (future start time) events are also hidden.
+			if status == EventStatus.ACTIVE:
+				stmt = stmt.where(
+					Event.status == EventStatus.ACTIVE,
+					Event.start_at <= now,
+					Event.end_at >= now,
+				)
+			elif status == EventStatus.ENDED:
+				stmt = stmt.where(Event.status == EventStatus.ENDED)
+			elif status is None:
+				# Return only active (started) and ended events, exclude drafts and future events.
+				stmt = stmt.where(
+					or_(
+						and_(
+							Event.status == EventStatus.ACTIVE,
+							Event.start_at <= now,
+						),
+						Event.status == EventStatus.ENDED,
+					)
+				)
+			else:
+				# If trying to query draft, return empty
+				return []
 
 		stmt = stmt.order_by(Event.start_at.desc())
 		rows = await self.db.scalars(stmt)
@@ -127,6 +153,10 @@ class EventService:
 				}
 				for quest in event.quests
 			],
+			location_name=event.location_name,
+			latitude=event.latitude,
+			longitude=event.longitude,
+			radius_m=event.radius_m,
 		)
 
 	async def create_event(self, *, actor_id: uuid.UUID, payload: EventCreateRequest) -> EventDetailResponse:
@@ -149,6 +179,10 @@ class EventService:
 			status=status,
 			reward_config=reward_config,
 			created_by=actor_id,
+			location_name=payload.location_name,
+			latitude=payload.latitude,
+			longitude=payload.longitude,
+			radius_m=payload.radius_m,
 		)
 		self.db.add(event)
 		await self.db.flush()
@@ -159,9 +193,36 @@ class EventService:
 		return await self.get_event_detail(event_id=event.id)
 
 	async def update_event(self, *, event_id: uuid.UUID, payload: EventUpdateRequest) -> EventDetailResponse:
-		event = await self.db.scalar(select(Event).where(Event.id == event_id))
+		event = await self.db.scalar(
+			select(Event)
+			.options(selectinload(Event.quests))
+			.where(Event.id == event_id)
+		)
 		if event is None:
 			raise NotFoundException("Event khong ton tai")
+
+		now = datetime.now(timezone.utc)
+		event_start_at = event.start_at.replace(tzinfo=timezone.utc) if event.start_at.tzinfo is None else event.start_at
+		has_started = event_start_at <= now
+
+		if has_started:
+			if payload.start_at is not None:
+				p_start = payload.start_at.astimezone(timezone.utc).replace(tzinfo=None) if payload.start_at.tzinfo else payload.start_at
+				e_start = event.start_at.astimezone(timezone.utc).replace(tzinfo=None) if event.start_at.tzinfo else event.start_at
+				if p_start != e_start:
+					raise BadRequestException("Không thể chỉnh sửa thời gian bắt đầu của sự kiện đã diễn ra")
+			if payload.quest_ids is not None and set(payload.quest_ids) != set(q.id for q in event.quests):
+				raise BadRequestException("Không thể thay đổi nhiệm vụ của sự kiện đã diễn ra")
+			# location (nếu ko gắn thì ko được chọn)
+			if event.latitude is None:
+				has_new_location = (
+					payload.latitude is not None or
+					payload.longitude is not None or
+					payload.location_name is not None or
+					payload.radius_m is not None
+				)
+				if has_new_location:
+					raise BadRequestException("Không thể chọn địa điểm cho sự kiện đã diễn ra nếu ban đầu không gắn địa điểm")
 
 		start_at = payload.start_at or event.start_at
 		end_at = payload.end_at or event.end_at
@@ -181,6 +242,14 @@ class EventService:
 			event.status = EventStatus(payload.status)
 		if payload.reward_config is not None:
 			event.reward_config = self._serialize_reward_config(payload.reward_config)
+		if payload.location_name is not None:
+			event.location_name = payload.location_name
+		if payload.latitude is not None:
+			event.latitude = payload.latitude
+		if payload.longitude is not None:
+			event.longitude = payload.longitude
+		if payload.radius_m is not None:
+			event.radius_m = payload.radius_m
 
 		if payload.quest_ids is not None:
 			self._validate_single_quest(payload.quest_ids)
@@ -478,7 +547,9 @@ class EventService:
 
 	@staticmethod
 	def _validate_event_window(start_at: datetime, end_at: datetime) -> None:
-		if end_at <= start_at:
+		s = start_at.astimezone(timezone.utc).replace(tzinfo=None) if start_at.tzinfo else start_at
+		e = end_at.astimezone(timezone.utc).replace(tzinfo=None) if end_at.tzinfo else end_at
+		if e <= s:
 			raise BadRequestException("Thoi gian ket thuc phai lon hon bat dau")
 
 	@staticmethod

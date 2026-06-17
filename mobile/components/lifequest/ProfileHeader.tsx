@@ -77,15 +77,37 @@ export function ProfileHeader({
         ) : null}
 
         <View style={styles.followRow}>
-          <View style={styles.statCenter}>
+          <Pressable
+            style={styles.statCenter}
+            onPress={() => {
+              // @ts-ignore
+              import('expo-router').then(({ router }) => {
+                router.push({
+                  pathname: '/(main)/friends',
+                  params: { userId: user.id, type: 'followers' },
+                });
+              });
+            }}
+          >
             <Text style={[styles.statValue, isDark ? styles.textDark : styles.textLight]}>{followers}</Text>
             <Text style={[styles.statLabel, isDark ? styles.bioDark : styles.bioLight]}>Followers</Text>
-          </View>
+          </Pressable>
           <View style={[styles.separator, isDark ? styles.separatorDark : styles.separatorLight]} />
-          <View style={styles.statCenter}>
+          <Pressable
+            style={styles.statCenter}
+            onPress={() => {
+              // @ts-ignore
+              import('expo-router').then(({ router }) => {
+                router.push({
+                  pathname: '/(main)/friends',
+                  params: { userId: user.id, type: 'following' },
+                });
+              });
+            }}
+          >
             <Text style={[styles.statValue, isDark ? styles.textDark : styles.textLight]}>{user.stats.following}</Text>
             <Text style={[styles.statLabel, isDark ? styles.bioDark : styles.bioLight]}>Following</Text>
-          </View>
+          </Pressable>
         </View>
 
         <Pressable

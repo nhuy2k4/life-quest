@@ -8,11 +8,13 @@ import {
   FiSearch,
   FiUpload,
   FiX,
+  FiMapPin,
 } from 'react-icons/fi';
 import { listBadges } from '../api/badges';
 import { createEvent, endEvent, getEvent, listEvents, updateEvent, uploadEventBanner } from '../api/events';
 import { listQuests } from '../api/quests';
 import Modal from '../components/Modal';
+import PoiPickerModal from '../components/PoiPickerModal';
 
 const STATUS_OPTIONS = ['draft', 'active', 'ended'];
 const XP_REWARD_RANKS = [1, 2, 3, 4, 5];
@@ -28,6 +30,10 @@ const emptyForm = {
   quest_ids: [],
   reward_xp: { 1: '', 2: '', 3: '', 4: '', 5: '' },
   reward_badges: { 1: '', 2: '', 3: '' },
+  location_name: '',
+  latitude: '',
+  longitude: '',
+  radius_m: '',
 };
 
 const toDateTimeLocal = (value) => {
@@ -74,6 +80,7 @@ export default function EventsPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState(null);
+  const [showPoiPicker, setShowPoiPicker] = useState(false);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -150,6 +157,10 @@ export default function EventsPage() {
         quest_ids: (detail.quests || []).map((quest) => quest.id),
         reward_xp: rewardXp,
         reward_badges: rewardBadges,
+        location_name: detail.location_name || '',
+        latitude: detail.latitude != null ? String(detail.latitude) : '',
+        longitude: detail.longitude != null ? String(detail.longitude) : '',
+        radius_m: detail.radius_m != null ? String(detail.radius_m) : '',
       });
       setModalMode('edit');
     } catch {
@@ -195,6 +206,10 @@ export default function EventsPage() {
     status: form.status,
     reward_config: buildRewardConfig(),
     quest_ids: form.quest_ids,
+    location_name: form.location_name.trim() || null,
+    latitude: form.latitude ? parseFloat(form.latitude) : null,
+    longitude: form.longitude ? parseFloat(form.longitude) : null,
+    radius_m: form.radius_m ? parseFloat(form.radius_m) : null,
   });
 
   const handleSave = async () => {
@@ -237,6 +252,9 @@ export default function EventsPage() {
       setActionLoading(false);
     }
   };
+
+  const hasStarted = modalMode === 'edit' && selectedEvent && new Date(selectedEvent.start_at) <= new Date();
+  const isLocationSelectionBlocked = hasStarted && (!selectedEvent || selectedEvent.latitude == null || selectedEvent.latitude === '');
 
   return (
     <div className="page">
@@ -363,6 +381,26 @@ export default function EventsPage() {
                   onChange={(e) => setForm((current) => ({ ...current, description: e.target.value }))}
                 />
 
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, marginBottom: 8 }}>
+                  <label style={{ margin: 0 }}>Location (POI)</label>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ padding: '4px 8px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                    onClick={() => setShowPoiPicker(true)}
+                    disabled={isLocationSelectionBlocked}
+                  >
+                    <FiMapPin /> Choose on Map
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  placeholder="No location selected"
+                  value={form.location_name ? `${form.location_name} (${form.latitude}, ${form.longitude} - Radius: ${form.radius_m}m)` : ''}
+                  readOnly
+                  style={{ background: 'var(--bg-card)', cursor: 'default' }}
+                />
+
                 <label>Banner image</label>
                 <div className="event-banner-input">
                   <div className="event-banner-preview">
@@ -390,8 +428,9 @@ export default function EventsPage() {
                       className="event-date-input"
                       type="datetime-local"
                       value={form.start_at}
-                      onClick={openNativeDateTimePicker}
-                      onFocus={openNativeDateTimePicker}
+                      disabled={hasStarted}
+                      onClick={hasStarted ? undefined : openNativeDateTimePicker}
+                      onFocus={hasStarted ? undefined : openNativeDateTimePicker}
                       onChange={(e) => setForm((current) => ({ ...current, start_at: e.target.value }))}
                     />
                   </div>
@@ -425,11 +464,12 @@ export default function EventsPage() {
                 <label>Quest</label>
                 <div className="tag-list event-quest-list">
                   {quests.map((quest) => (
-                    <label key={quest.id} className="checkbox-label" style={{ width: '100%' }}>
+                    <label key={quest.id} className={`checkbox-label ${hasStarted ? 'disabled' : ''}`} style={{ width: '100%' }}>
                       <input
                         type="radio"
                         name="event-quest"
                         checked={form.quest_ids.includes(quest.id)}
+                        disabled={hasStarted}
                         onChange={() => selectQuest(quest.id)}
                       />
                       <span className="text-truncate">{quest.title}</span>
@@ -486,6 +526,22 @@ export default function EventsPage() {
             </button>
           </div>
         </Modal>
+      )}
+
+      {showPoiPicker && (
+        <PoiPickerModal
+          onClose={() => setShowPoiPicker(false)}
+          onSelect={(poi) => {
+            setForm((current) => ({
+              ...current,
+              location_name: poi.name,
+              latitude: String(poi.latitude),
+              longitude: String(poi.longitude),
+              radius_m: String(poi.radius_m),
+            }));
+          }}
+          initialPoiId={null}
+        />
       )}
     </div>
   );

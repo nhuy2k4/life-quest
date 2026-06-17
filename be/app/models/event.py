@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, func, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 	from app.models.quest import Quest
 	from app.models.social import Post
 	from app.models.user import User
+	from app.models.poi import Poi
 
 
 class Event(Base, UUIDMixin, TimestampMixin):
@@ -35,6 +36,11 @@ class Event(Base, UUIDMixin, TimestampMixin):
 		nullable=True,
 		index=True,
 	)
+	location_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+	latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+	longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+	radius_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+
 
 	quests: Mapped[list["Quest"]] = relationship(
 		"Quest",
@@ -61,6 +67,12 @@ class EventQuest(Base):
 		ForeignKey("quests.id", ondelete="CASCADE"),
 		primary_key=True,
 	)
+	poi_id: Mapped[uuid.UUID | None] = mapped_column(
+		ForeignKey("pois.id", ondelete="SET NULL"),
+		nullable=True,
+	)
+
+	poi: Mapped["Poi | None"] = relationship("Poi")
 
 
 class EventResult(Base, UUIDMixin):

@@ -42,7 +42,6 @@ def _build_submission(
         is_active=True,
         labels=labels,
         min_confidence=min_confidence,
-        poi_required=False,
     )
     user_quest = UserQuest(
         user_id=user_id,

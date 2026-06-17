@@ -276,7 +276,11 @@ export default function OtherProfileScreen() {
               onPress={() =>
                 router.push({
                   pathname: ROUTES.modal.chatDetail as any,
-                  params: { targetUserId: profile.id, username: profile.username },
+                  params: {
+                    targetUserId: profile.id,
+                    username: profile.username,
+                    avatarUrl: profile.avatarUrl ?? undefined,
+                  },
                 })
               }
             >

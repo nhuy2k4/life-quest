@@ -19,6 +19,7 @@ from app.main import app
 from app.models.enums import ActivityLevel, QuestDifficulty, XpSource
 from app.models.poi import Poi
 from app.models.quest import Category, Quest
+from app.models.quest_instance import QuestInstance
 from app.models.recommendation import RecommendationLog
 from app.models.user import User
 from app.models.user_preference import UserPreference
@@ -107,6 +108,18 @@ async def seeded_user_and_quests():
 		session.add_all([user, food, fitness, quest_easy, quest_hard])
 		await session.flush()
 
+		from app.models.enums import PostVisibility
+		from app.models.social import Post
+
+		post = Post(
+			id=uuid.uuid4(),
+			user_id=user_id,
+			image_url="https://example.com/demo.jpg",
+			caption="Demo post",
+			quest_id=quest_easy.id,
+			visibility=PostVisibility.PUBLIC,
+		)
+
 		preference = UserPreference(
 			user_id=user_id,
 			interests=[food.id],
@@ -115,7 +128,7 @@ async def seeded_user_and_quests():
 			location_enabled=True,
 			notification_enabled=True,
 		)
-		session.add(preference)
+		session.add_all([post, preference])
 		await session.commit()
 
 		return user_id
@@ -185,11 +198,15 @@ async def test_recommendation_returns_items(seeded_user_and_quests):
 		assert "request_id" in payload
 		assert payload["recommended_for_you"]
 		assert payload["sections"]
-		first = payload["recommended_for_you"][0]
-		assert "final_score" in first
-		assert "reasons" in first
-		assert "score_breakdown" in first
-		assert first["score_breakdown"]["interest"] >= 0
+		first_post = payload["recommended_for_you"][0]
+		assert "final_score" in first_post
+		assert "reasons" in first_post
+
+		first_quest = payload["explore_quests"][0]
+		assert "final_score" in first_quest
+		assert "reasons" in first_quest
+		assert "score_breakdown" in first_quest
+		assert first_quest["score_breakdown"]["interest"] >= 0
 	app.dependency_overrides.clear()
 
 
@@ -210,14 +227,14 @@ async def test_recommendation_log_endpoint(seeded_user_and_quests):
 		assert response.status_code == 200
 		payload = response.json()
 		request_id = uuid.UUID(payload["request_id"])
-		item = payload["recommended_for_you"][0]
+		item = payload["explore_quests"][0]
 		quest_id = item["id"]
 
 		log_payload = {
 			"request_id": str(request_id),
 			"quest_id": quest_id,
 			"event": "clicked",
-			"section": "recommended_for_you",
+			"section": "explore_new_things",
 			"rank": 1,
 			"final_score": item["final_score"],
 			"reasons": item["reasons"],
@@ -253,14 +270,19 @@ async def test_recommendation_debug_nearby_and_continue(seeded_user_and_quests):
 			approval_rate=1.0,
 			time_limit_hours=24,
 			location_required=True,
-			poi_required=True,
 			is_active=True,
-			poi=poi,
 			created_at=datetime.now(timezone.utc),
 			updated_at=datetime.now(timezone.utc),
 		)
 		session.add_all([poi, quest])
 		await session.flush()
+		session.add(
+			QuestInstance(
+				quest_id=quest.id,
+				user_id=seeded_user_and_quests,
+				poi_id=poi.id,
+			)
+		)
 		session.add(
 			UserQuest(
 				user_id=seeded_user_and_quests,

@@ -172,6 +172,24 @@ class QuestService:
         )
         is_event_quest = quest.is_event or (linked_event_id is not None)
 
+        event_id = None
+        event_location_name = None
+        event_latitude = None
+        event_longitude = None
+        event_radius_m = None
+
+        if linked_event_id is not None:
+            from app.models.event import Event
+            event_obj = await self.repository.db.scalar(
+                select(Event).where(Event.id == linked_event_id)
+            )
+            if event_obj:
+                event_id = event_obj.id
+                event_location_name = event_obj.location_name
+                event_latitude = event_obj.latitude
+                event_longitude = event_obj.longitude
+                event_radius_m = event_obj.radius_m
+
         # Event quests don't use POI — only GPS check-in area is validated at submit time
         if is_event_quest:
             detail_poi_id = None
@@ -224,6 +242,11 @@ class QuestService:
                 if user_quest
                 else None
             ),
+            event_id=event_id,
+            event_location_name=event_location_name,
+            event_latitude=event_latitude,
+            event_longitude=event_longitude,
+            event_radius_m=event_radius_m,
         )
 
     async def start_quest(
@@ -361,13 +384,30 @@ class QuestService:
                 .order_by(Event.start_at.desc())
                 .limit(1)
             )
+        # Check location validity if it's an event
+        is_location_valid = True
+        location_fail_reason = None
         if active_event_id:
             lat = payload.lat
             lng = payload.lng
             if lat is None or lng is None:
-                raise BadRequestException("Sự kiện yêu cầu ảnh phải có toạ độ (vị trí chụp).")
-            if not (15.90 <= lat <= 16.25 and 107.80 <= lng <= 108.35):
-                raise BadRequestException("Bạn phải chụp ảnh tại khu vực Đà Nẵng mới được tham gia sự kiện này!")
+                is_location_valid = False
+                location_fail_reason = "Ảnh không chứa thông tin toạ độ (GPS)."
+            else:
+                active_event = await self.repository.db.scalar(
+                    select(Event).where(Event.id == active_event_id)
+                )
+                if active_event and active_event.latitude is not None and active_event.longitude is not None and active_event.radius_m is not None:
+                    from app.services.poi.poi_matcher import _haversine_m
+                    dist_m = _haversine_m(lat, lng, active_event.latitude, active_event.longitude)
+                    if dist_m > active_event.radius_m:
+                        is_location_valid = False
+                        location_fail_reason = f"Vị trí chụp ảnh cách địa điểm sự kiện {int(dist_m)}m (yêu cầu trong bán kính {int(active_event.radius_m)}m)."
+                else:
+                    # Fallback check Da Nang box
+                    if not (15.90 <= lat <= 16.25 and 107.80 <= lng <= 108.35):
+                        is_location_valid = False
+                        location_fail_reason = "Bạn phải chụp ảnh tại khu vực Đà Nẵng mới được tham gia sự kiện này!"
 
         normalized_poi_id = None if active_event_id else (payload.poi_id if quest.location_required else None)
 
@@ -418,10 +458,19 @@ class QuestService:
             if user_quest.normalized_status == UserQuestStatus.SUBMITTED and not active_event_id:
                 raise ConflictException("Quest đã được nộp trước đó")
 
-            # Náº¿u nhiá»‡m vá»¥ Ä‘ang treo hoáº·c bá»‹ reject, tá»± Ä‘á»™ng chuyá»ƒn vá» STARTED Ä‘á»ƒ cho phÃ©p ná»™p Ä‘Ã¨/má»›i
+            # Náº¿u nhiá»‡m vá»¥ Ä‘ang treo hoáº·c bá»‹ reject, tá»± Ä‘á»™ng chuyá»ƒn vá»  STARTED Ä‘á»ƒ cho phÃ©p ná»™p Ä‘Ã¨/má»›i
             if user_quest.normalized_status not in STARTED_STATUSES:
                 if user_quest.normalized_status != UserQuestStatus.REJECTED and not (active_event_id and user_quest.normalized_status == UserQuestStatus.SUBMITTED):
                     raise BadRequestException("Tráº¡ng thÃ¡i quest khÃ´ng há»£p lá»‡ Ä‘á»ƒ ná»™p áº£nh")
+
+        submission_poi_id = None if active_event_id else payload.poi_id
+        poi_distance_m = None
+        if submission_poi_id and payload.lat is not None and payload.lng is not None:
+            from app.models.poi import Poi
+            poi = await self.repository.db.scalar(select(Poi).where(Poi.id == submission_poi_id))
+            if poi:
+                from app.services.poi.poi_matcher import _haversine_m
+                poi_distance_m = _haversine_m(payload.lat, payload.lng, poi.latitude, poi.longitude)
 
         if existing_submission is not None:
             if existing_submission.status == SubmissionStatus.APPROVED:
@@ -439,8 +488,10 @@ class QuestService:
                 lat=payload.lat,
                 lng=payload.lng,
                 location_accuracy_m=payload.location_accuracy_m,
+                poi_id=submission_poi_id,
                 increment_retry=existing_submission.status == SubmissionStatus.REJECTED,
             )
+            submission.poi_distance_m = poi_distance_m
             existing_post = await self.repository.get_post_by_submission_for_update(
                 user_id=user_id,
                 submission_id=submission.id,
@@ -450,7 +501,7 @@ class QuestService:
             if payload.post_id is not None:
                 incoming_post = await self.repository.get_post_for_update(user_id=user_id, post_id=payload.post_id)
                 if incoming_post is None:
-                    raise NotFoundException("Post khÃƒÂ´ng tÃ¡Â»â€œn tÃ¡ÂºÂ¡i hoÃ¡ÂºÂ·c khÃƒÂ´ng thuÃ¡Â»â„¢c vÃ¡Â»Â bÃ¡ÂºÂ¡n")
+                    raise NotFoundException("Post khÃƒÂ´ng tÃ¡Â»â€œn tÃ¡ÂºÂ¡i hoÃ¡ÂºÂ·c khÃƒÂ´ng thuÃ¡Â»â„¢c vÃ¡Â»Â  bÃ¡ÂºÂ¡n")
                 if incoming_post.submission_id is not None and incoming_post.submission_id != submission.id:
                     raise ConflictException("Post Ã„â€˜ÃƒÂ£ gÃ¡ÂºÂ¯n vÃ¡Â»â€ºi submission khÃƒÂ¡c")
                 if incoming_post.quest_id is not None and incoming_post.quest_id != quest.id:
@@ -482,9 +533,99 @@ class QuestService:
                 if incoming_post.poi_id is None:
                     incoming_post.poi_id = user_quest.poi_id
                 linked_post_id = incoming_post.id
-            user_quest.status = UserQuestStatus.SUBMITTED
-            await self.repository.commit()
+            if is_location_valid:
+                user_quest.status = UserQuestStatus.SUBMITTED
+                await self.repository.commit()
 
+                try:
+                    enqueue_submission_approval(submission.id)
+                except Exception:
+                    logger.exception("Failed to enqueue AI approval for submission %s", submission.id)
+
+                return SubmitQuestResponse(
+                    submission_id=submission.id,
+                    post_id=linked_post_id,
+                    user_quest_id=user_quest.id,
+                    poi_id=user_quest.poi_id if quest.location_required else None,
+                    status=UserQuestStatus.SUBMITTED,
+                    submission_status=SubmissionStatus.PENDING,
+                    submitted_at=submission.created_at,
+                    retry_count=submission.retry_count,
+                    max_retry_count=MAX_SUBMISSION_RETRY_COUNT,
+                )
+            else:
+                submission.status = SubmissionStatus.REJECTED
+                submission.ai_metadata = {"reason": location_fail_reason}
+                user_quest.status = UserQuestStatus.REJECTED
+                await self.repository.commit()
+
+                from app.services.notification.notification_service import NotificationService
+                await NotificationService(self.repository.db).create_notification(
+                    user_id=user_id,
+                    notification_type="quest_rejected",
+                    data={
+                        "submission_id": str(submission.id),
+                        "quest_id": str(quest.id),
+                        "reason": location_fail_reason,
+                        "retry_count": submission.retry_count,
+                        "consolation_xp": 0,
+                    },
+                )
+
+                return SubmitQuestResponse(
+                    submission_id=submission.id,
+                    post_id=linked_post_id,
+                    user_quest_id=user_quest.id,
+                    poi_id=user_quest.poi_id if quest.location_required else None,
+                    status=UserQuestStatus.REJECTED,
+                    submission_status=SubmissionStatus.REJECTED,
+                    submitted_at=submission.created_at,
+                    retry_count=submission.retry_count,
+                    max_retry_count=MAX_SUBMISSION_RETRY_COUNT,
+                )
+
+        try:
+            submission = await self.repository.create_submission(
+                user_quest_id=user_quest.id,
+                image_url=payload.image_url,
+                cloudinary_public_id=payload.cloudinary_public_id,
+                file_hash=payload.file_hash,
+                lat=payload.lat,
+                lng=payload.lng,
+                location_accuracy_m=payload.location_accuracy_m,
+                poi_id=submission_poi_id,
+            )
+            submission.poi_distance_m = poi_distance_m
+            if payload.post_id is not None:
+                post = await self.repository.get_post_for_update(user_id=user_id, post_id=payload.post_id)
+                if post is None:
+                    raise NotFoundException("Post khÃ´ng tá»“n táº¡i hoáº·c khÃ´ng thuá»™c vá»  báº¡n")
+                if post.submission_id is not None and post.submission_id != submission.id:
+                    raise ConflictException("Post Ä‘Ã£ gáº¯n vá»›i submission khÃ¡c")
+                if post.quest_id is not None and post.quest_id != quest.id:
+                    raise BadRequestException("Post khÃ´ng khá»›p vá»›i quest Ä‘ang ná»™p")
+                post.submission_id = submission.id
+                post.quest_id = quest.id
+                post.event_id = active_event_id
+                if active_event_id:
+                    post.visibility = PostVisibility.PUBLIC
+                if post.poi_id is None:
+                    post.poi_id = user_quest.poi_id if quest.location_required else None
+                linked_post_id = post.id
+            else:
+                linked_post_id = None
+            if is_location_valid:
+                user_quest.status = UserQuestStatus.SUBMITTED
+                await self.repository.commit()
+            else:
+                submission.status = SubmissionStatus.REJECTED
+                submission.ai_metadata = {"reason": location_fail_reason}
+                user_quest.status = UserQuestStatus.REJECTED
+                await self.repository.commit()
+        except IntegrityError as exc:
+            raise ConflictException("Quest đã được nộp trước đó") from exc
+
+        if is_location_valid:
             try:
                 enqueue_submission_approval(submission.id)
             except Exception:
@@ -501,56 +642,31 @@ class QuestService:
                 retry_count=submission.retry_count,
                 max_retry_count=MAX_SUBMISSION_RETRY_COUNT,
             )
-
-        try:
-            submission = await self.repository.create_submission(
-                user_quest_id=user_quest.id,
-                image_url=payload.image_url,
-                cloudinary_public_id=payload.cloudinary_public_id,
-                file_hash=payload.file_hash,
-                lat=payload.lat,
-                lng=payload.lng,
-                location_accuracy_m=payload.location_accuracy_m,
+        else:
+            from app.services.notification.notification_service import NotificationService
+            await NotificationService(self.repository.db).create_notification(
+                user_id=user_id,
+                notification_type="quest_rejected",
+                data={
+                    "submission_id": str(submission.id),
+                    "quest_id": str(quest.id),
+                    "reason": location_fail_reason,
+                    "retry_count": submission.retry_count,
+                    "consolation_xp": 0,
+                },
             )
-            if payload.post_id is not None:
-                post = await self.repository.get_post_for_update(user_id=user_id, post_id=payload.post_id)
-                if post is None:
-                    raise NotFoundException("Post khÃ´ng tá»“n táº¡i hoáº·c khÃ´ng thuá»™c vá» báº¡n")
-                if post.submission_id is not None and post.submission_id != submission.id:
-                    raise ConflictException("Post Ä‘Ã£ gáº¯n vá»›i submission khÃ¡c")
-                if post.quest_id is not None and post.quest_id != quest.id:
-                    raise BadRequestException("Post khÃ´ng khá»›p vá»›i quest Ä‘ang ná»™p")
-                post.submission_id = submission.id
-                post.quest_id = quest.id
-                post.event_id = active_event_id
-                if active_event_id:
-                    post.visibility = PostVisibility.PUBLIC
-                if post.poi_id is None:
-                    post.poi_id = user_quest.poi_id if quest.location_required else None
-                linked_post_id = post.id
-            else:
-                linked_post_id = None
-            user_quest.status = UserQuestStatus.SUBMITTED
-            await self.repository.commit()
-        except IntegrityError as exc:
-            raise ConflictException("Quest Ä‘Ã£ Ä‘Æ°á»£c ná»™p trÆ°á»›c Ä‘Ã³") from exc
 
-        try:
-            enqueue_submission_approval(submission.id)
-        except Exception:
-            logger.exception("Failed to enqueue AI approval for submission %s", submission.id)
-
-        return SubmitQuestResponse(
-            submission_id=submission.id,
-            post_id=linked_post_id,
-            user_quest_id=user_quest.id,
-            poi_id=user_quest.poi_id if quest.location_required else None,
-            status=UserQuestStatus.SUBMITTED,
-            submission_status=SubmissionStatus.PENDING,
-            submitted_at=submission.created_at,
-            retry_count=submission.retry_count,
-            max_retry_count=MAX_SUBMISSION_RETRY_COUNT,
-        )
+            return SubmitQuestResponse(
+                submission_id=submission.id,
+                post_id=linked_post_id,
+                user_quest_id=user_quest.id,
+                poi_id=user_quest.poi_id if quest.location_required else None,
+                status=UserQuestStatus.REJECTED,
+                submission_status=SubmissionStatus.REJECTED,
+                submitted_at=submission.created_at,
+                retry_count=submission.retry_count,
+                max_retry_count=MAX_SUBMISSION_RETRY_COUNT,
+            )
 
     async def recommend_from_image(
         self,

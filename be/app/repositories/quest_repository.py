@@ -221,6 +221,7 @@ class QuestRepository:
         lat: float | None = None,
         lng: float | None = None,
         location_accuracy_m: float | None = None,
+        poi_id: uuid.UUID | None = None,
     ) -> Submission:
         submission = Submission(
             user_quest_id=user_quest_id,
@@ -230,6 +231,7 @@ class QuestRepository:
             lat=lat,
             lng=lng,
             location_accuracy_m=location_accuracy_m,
+            poi_id=poi_id,
             status=SubmissionStatus.PENDING,
             is_suspicious=False,
         )
@@ -321,6 +323,7 @@ class QuestRepository:
         lat: float | None = None,
         lng: float | None = None,
         location_accuracy_m: float | None = None,
+        poi_id: uuid.UUID | None = None,
         increment_retry: bool = True,
     ) -> Submission:
         submission.image_url = image_url
@@ -338,7 +341,7 @@ class QuestRepository:
         submission.vision_labels = None
         submission.vision_raw = None
         submission.ai_metadata = None
-        submission.poi_id = None
+        submission.poi_id = poi_id
         submission.poi_distance_m = None
         await self.db.flush()
         return submission

@@ -119,11 +119,12 @@ class SubmissionService:
 
 		submission.status = SubmissionStatus.REJECTED
 		submission.user_quest.status = UserQuestStatus.REJECTED
-		await self.repository.db.execute(
-			Post.__table__.update()
-			.where(Post.submission_id == submission.id)
-			.values(event_id=None)
-		)
+		# Keep event_id linked even if the submission is rejected so it shows as Not eligible in Event Details
+		# await self.repository.db.execute(
+		# 	Post.__table__.update()
+		# 	.where(Post.submission_id == submission.id)
+		# 	.values(event_id=None)
+		# )
 		await NotificationService(self.repository.db).create_notification(
 			user_id=submission.user_quest.user_id,
 			notification_type="quest_rejected",

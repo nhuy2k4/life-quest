@@ -125,7 +125,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   const logout = useCallback(async (): Promise<void> => {
     // Xóa storage trước, set state sau — tránh race condition
-    await clearItems([StorageKeys.accessToken, StorageKeys.refreshToken, StorageKeys.pushToken, StorageKeys.onboardingCompleted]);
+    await clearItems([
+      StorageKeys.accessToken,
+      StorageKeys.refreshToken,
+      StorageKeys.pushToken,
+      StorageKeys.onboardingCompleted,
+      StorageKeys.feedCache,
+      StorageKeys.attachedQuest,
+      StorageKeys.newPost,
+      StorageKeys.cameraMode,
+      StorageKeys.searchHistory,
+    ]);
     setAuthenticatedState(false);
     setOnboardingCompletedState(false);
   }, []);

@@ -21,9 +21,10 @@ import { getItem, StorageKeys } from '@/utils/storage';
 type PostCardProps = {
   post: Post;
   attachedQuest?: Pick<Quest, 'title' | 'xpReward'> | null;
+  showEligibility?: boolean;
 };
 
-export function PostCard({ post, attachedQuest = null }: PostCardProps) {
+export function PostCard({ post, attachedQuest = null, showEligibility = false }: PostCardProps) {
   const router = useRouter();
   const { setPosts, hiddenPostIds, hidePost, unhidePost } = usePostContext();
   const { showToast } = useToast();
@@ -377,6 +378,12 @@ export function PostCard({ post, attachedQuest = null }: PostCardProps) {
             >
               <Ionicons name="trophy" size={12} color="#fff" />
               <Text style={styles.rankOverlayText}>#{post.eventRank}</Text>
+            </View>
+          ) : null}
+          {showEligibility && post.isEligible === false ? (
+            <View style={styles.notEligibleOverlay}>
+              <Ionicons name="ban" size={12} color="#fff" />
+              <Text style={styles.notEligibleOverlayText}>Not eligible</Text>
             </View>
           ) : null}
         </Pressable>
@@ -807,6 +814,23 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(17, 24, 28, 0.80)',
   },
   rankOverlayText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  notEligibleOverlay: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(220, 38, 38, 0.90)',
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    position: 'absolute',
+    right: 10,
+    top: 10,
+  },
+  notEligibleOverlayText: {
     color: '#fff',
     fontSize: 12,
     fontWeight: '700',

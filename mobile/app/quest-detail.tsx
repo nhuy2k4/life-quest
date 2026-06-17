@@ -32,6 +32,12 @@ export default function QuestDetailScreen() {
   const recommendationScore = typeof params.recommendationScore === 'string' ? Number(params.recommendationScore) : undefined;
   const recommendationReasons = typeof params.recommendationReasons === 'string' ? params.recommendationReasons : undefined;
   const recommendationBreakdown = typeof params.recommendationBreakdown === 'string' ? params.recommendationBreakdown : undefined;
+
+  const eventId = typeof params.eventId === 'string' ? params.eventId : undefined;
+  const eventLocationName = typeof params.eventLocationName === 'string' ? params.eventLocationName : undefined;
+  const eventLatitude = typeof params.eventLatitude === 'string' ? parseFloat(params.eventLatitude) : undefined;
+  const eventLongitude = typeof params.eventLongitude === 'string' ? parseFloat(params.eventLongitude) : undefined;
+  const eventRadiusM = typeof params.eventRadiusM === 'string' ? parseFloat(params.eventRadiusM) : undefined;
   const [questTitle, setQuestTitle] = useState('');
   const [questDescription, setQuestDescription] = useState('');
   const [questXp, setQuestXp] = useState(0);
@@ -46,6 +52,12 @@ const [totalXpWithPoi, setTotalXpWithPoi] = useState(0);
   const [poiName, setPoiName] = useState<string | null>(null);
   const [effectivePoiId, setEffectivePoiId] = useState<string | null>(poiId ?? null);
   const [isEventQuestFromServer, setIsEventQuestFromServer] = useState(false);
+
+  const [serverEventId, setServerEventId] = useState<string | null>(null);
+  const [serverEventLocationName, setServerEventLocationName] = useState<string | null>(null);
+  const [serverEventLatitude, setServerEventLatitude] = useState<number | null>(null);
+  const [serverEventLongitude, setServerEventLongitude] = useState<number | null>(null);
+  const [serverEventRadiusM, setServerEventRadiusM] = useState<number | null>(null);
 
 
   const handleStartQuest = async () => {
@@ -90,6 +102,12 @@ const [totalXpWithPoi, setTotalXpWithPoi] = useState(0);
         }
       }
 
+      const finalIsEvent = isEvent || isEventQuestFromServer;
+      const finalEventLocationName = eventLocationName || serverEventLocationName;
+      const finalEventLatitude = eventLatitude != null ? eventLatitude : serverEventLatitude;
+      const finalEventLongitude = eventLongitude != null ? eventLongitude : serverEventLongitude;
+      const finalEventRadiusM = eventRadiusM != null ? eventRadiusM : serverEventRadiusM;
+
       await setItem(StorageKeys.cameraMode, 'quest');
       await setItem(StorageKeys.attachedQuest, {
         questId,
@@ -97,7 +115,12 @@ const [totalXpWithPoi, setTotalXpWithPoi] = useState(0);
         xp: questXp,
         poi_id: effectivePoiId,
         poi_name: poiName,
-        isEvent,
+        isEvent: finalIsEvent,
+        eventId: eventId || serverEventId,
+        eventLocationName: finalEventLocationName,
+        eventLatitude: finalEventLatitude,
+        eventLongitude: finalEventLongitude,
+        eventRadiusM: finalEventRadiusM,
       });
       router.push(ROUTES.main.camera as Href);
     } finally {
@@ -120,17 +143,38 @@ const [totalXpWithPoi, setTotalXpWithPoi] = useState(0);
         const nextPoiName = detail.poi_name ?? routePoiName ?? null;
         const hasLocationContext = Boolean(nextPoiId || nextPoiName || detail.poi_required);
 
-        setQuestTitle(detail.rendered_text);
-        if (detail.labels && detail.labels.length > 0) {
-          setQuestDescription(`Category: ${detail.labels.join(', ')}`);
+        const nextEventId = detail.event_id ?? null;
+        const nextEventLocationName = detail.event_location_name ?? null;
+        const nextEventLatitude = detail.event_latitude ?? null;
+        const nextEventLongitude = detail.event_longitude ?? null;
+        const nextEventRadiusM = detail.event_radius_m ?? null;
+
+        setServerEventId(nextEventId);
+        setServerEventLocationName(nextEventLocationName);
+        setServerEventLatitude(nextEventLatitude);
+        setServerEventLongitude(nextEventLongitude);
+        setServerEventRadiusM(nextEventRadiusM);
+
+        const displayEventLocationName = eventLocationName || nextEventLocationName;
+        if ((isEvent || !!detail.is_event) && displayEventLocationName) {
+          setQuestTitle(`${detail.rendered_text} in ${displayEventLocationName}`);
         } else {
-          setQuestDescription('');
+          setQuestTitle(detail.rendered_text);
         }
-setQuestXp(hasLocationContext ? detail.total_xp_with_poi : detail.base_xp);
-setBaseXp(detail.base_xp);
-setPoiBonusXp(detail.poi_bonus_xp);
-setTotalXpWithPoi(detail.total_xp_with_poi);
-  setQuestImageUrl(detail.image_url ?? null);
+
+        let desc = '';
+        if (detail.labels && detail.labels.length > 0) {
+          desc = `Category: ${detail.labels.join(', ')}`;
+        }
+        if ((isEvent || !!detail.is_event) && displayEventLocationName) {
+          desc = desc ? `${desc} • Vị trí: ${displayEventLocationName}` : `Vị trí: ${displayEventLocationName}`;
+        }
+        setQuestDescription(desc);
+        setQuestXp(hasLocationContext ? detail.total_xp_with_poi : detail.base_xp);
+        setBaseXp(detail.base_xp);
+        setPoiBonusXp(detail.poi_bonus_xp);
+        setTotalXpWithPoi(detail.total_xp_with_poi);
+        setQuestImageUrl(detail.image_url ?? null);
         setUserStatus(detail.user_status);
         setPoiRequired(hasLocationContext);
         setPoiName(nextPoiName);
@@ -247,7 +291,9 @@ setTotalXpWithPoi(detail.total_xp_with_poi);
                 <Text style={styles.locationReqTitleEvent}>Nhiệm vụ Event</Text>
               </View>
               <Text style={styles.locationReqDescEvent}>
-                Đây là nhiệm vụ dành riêng cho sự kiện. Bạn cần tham gia sự kiện và chụp ảnh tại khu vực Đà Nẵng để hoàn thành nhiệm vụ này và nhận {baseXp} XP.
+                {(eventLocationName || serverEventLocationName)
+                  ? `Đây là nhiệm vụ dành riêng cho sự kiện. Bạn cần chụp ảnh kèm định vị GPS ngay tại địa điểm "${eventLocationName || serverEventLocationName}" (trong vòng ${eventRadiusM != null ? eventRadiusM : serverEventRadiusM}m) để hoàn thành và nhận ${baseXp} XP.`
+                  : `Đây là nhiệm vụ dành riêng cho sự kiện. Bạn cần chụp ảnh tại khu vực Đà Nẵng để hoàn thành và nhận ${baseXp} XP.`}
               </Text>
             </View>
           ) : poiRequired ? (

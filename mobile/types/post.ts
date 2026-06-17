@@ -36,6 +36,7 @@ export interface Post {
   recommendationScore?: number;
   eventRank?: number;
   eventBadgeUrl?: string;
+  isEligible?: boolean;
 }
 
 export interface Comment {

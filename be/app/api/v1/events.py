@@ -14,6 +14,7 @@ from app.schemas.event import (
 	EventPostListResponse,
 	EventUpdateRequest,
 )
+from app.models.enums import UserRole
 from app.services.event.event_service import EventService
 
 
@@ -27,10 +28,11 @@ def get_event_service(db: AsyncSession = Depends(get_db)) -> EventService:
 @router.get("", response_model=list[EventListItem])
 async def list_events(
 	status_filter: str | None = Query(default=None, alias="status", pattern="^(draft|active|ended)$"),
-	_current_user: CurrentUser = Depends(get_current_user),
+	current_user: CurrentUser = Depends(get_current_user),
 	service: EventService = Depends(get_event_service),
 ) -> list[EventListItem]:
-	return await service.list_events(status=status_filter)
+	is_admin = current_user.role == UserRole.ADMIN
+	return await service.list_events(status=status_filter, is_admin=is_admin)
 
 
 @router.post("", response_model=EventDetailResponse, status_code=status.HTTP_201_CREATED)

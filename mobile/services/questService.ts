@@ -30,6 +30,11 @@ export type QuestDetail = {
   total_xp_with_poi: number;
   poi_required: boolean;
   is_event?: boolean;
+  event_id?: string | null;
+  event_location_name?: string | null;
+  event_latitude?: number | null;
+  event_longitude?: number | null;
+  event_radius_m?: number | null;
 
   is_active: boolean;
   user_status: 'not_started' | 'started' | 'submitted' | 'approved' | 'rejected';

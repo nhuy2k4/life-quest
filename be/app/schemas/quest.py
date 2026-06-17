@@ -46,6 +46,12 @@ class QuestDetailResponse(BaseModel):
 	user_status: QuestUserStatus = "not_started"
 	started_at: datetime | None = None
 
+	event_id: uuid.UUID | None = None
+	event_location_name: str | None = None
+	event_latitude: float | None = None
+	event_longitude: float | None = None
+	event_radius_m: float | None = None
+
 	model_config = {"from_attributes": True}
 
 

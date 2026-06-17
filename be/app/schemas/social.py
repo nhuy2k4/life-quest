@@ -37,6 +37,11 @@ class PostCreateRequest(BaseModel):
 	is_event: bool = False
 
 
+class PostUpdateRequest(BaseModel):
+	caption: str | None = None
+	visibility: PostVisibility | None = None
+
+
 class PostResponse(BaseModel):
 	id: uuid.UUID
 	submission_id: uuid.UUID | None
@@ -55,6 +60,7 @@ class PostResponse(BaseModel):
 	created_at: datetime
 	event_rank: int | None = None
 	event_badge_url: str | None = None
+	is_eligible: bool = True
 
 	model_config = {"from_attributes": True}
 

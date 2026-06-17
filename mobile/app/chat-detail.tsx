@@ -1,8 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Linking from 'expo-linking';
+import { ROUTES } from '@/constants/routes';
+import { Avatar } from '@/components/ui/avatar';
 
 import {
   createChatSocket,
@@ -21,11 +24,21 @@ export default function ChatDetailScreen() {
   const initialConversationId = typeof params.conversationId === 'string' ? params.conversationId : null;
   const targetUserId = typeof params.targetUserId === 'string' ? params.targetUserId : null;
   const username = typeof params.username === 'string' ? params.username : 'Chat';
+  const avatarUrl = typeof params.avatarUrl === 'string' ? params.avatarUrl : undefined;
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+
+  // Extract target user details if messages exist and we have a message from the other user
+  const otherUserFromMessages = useMemo(() => {
+    const otherMsg = messages.find((m) => !m.is_mine);
+    return otherMsg ? otherMsg.sender : null;
+  }, [messages]);
+
+  const finalTargetUserId = targetUserId || otherUserFromMessages?.id;
+  const finalAvatarUrl = avatarUrl || otherUserFromMessages?.avatar_url || undefined;
 
   const sortedMessages = useMemo(
     () => [...messages].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)),
@@ -103,13 +116,41 @@ export default function ChatDetailScreen() {
     }
   };
 
+  const handleLinkPress = (url: string) => {
+    const match = url.match(/\/social\/posts\/([a-f0-9-]+)\/share/);
+    if (match && match[1]) {
+      const postId = match[1];
+      router.push({
+        pathname: ROUTES.modal.postDetail as any,
+        params: { postId },
+      });
+    } else {
+      void Linking.openURL(url);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.iconButton}>
-          <Ionicons name="arrow-back" size={20} color="#11181C" />
-        </Pressable>
-        <Text style={styles.headerTitle}>{username}</Text>
+        <View style={styles.headerLeft}>
+          <Pressable onPress={() => router.back()} style={styles.iconButton}>
+            <Ionicons name="arrow-back" size={20} color="#11181C" />
+          </Pressable>
+          <Pressable
+            style={styles.headerProfileClick}
+            disabled={!finalTargetUserId}
+            onPress={() => {
+              if (finalTargetUserId) {
+                router.push(ROUTES.otherProfile(finalTargetUserId) as Href);
+              }
+            }}
+          >
+            <Avatar size={32} uri={finalAvatarUrl} label={username.charAt(0)} />
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {username}
+            </Text>
+          </Pressable>
+        </View>
         <View style={styles.iconButton} />
       </View>
 
@@ -121,7 +162,22 @@ export default function ChatDetailScreen() {
           contentContainerStyle={styles.messageList}
           renderItem={({ item }) => (
             <View style={[styles.bubble, item.is_mine ? styles.mineBubble : styles.theirBubble]}>
-              <Text style={[styles.bubbleText, item.is_mine ? styles.mineText : styles.theirText]}>{item.content}</Text>
+              <Text selectable={true} style={[styles.bubbleText, item.is_mine ? styles.mineText : styles.theirText]}>
+                {item.content.split(/(https?:\/\/[^\s]+)/g).map((part, index) => {
+                  if (part.match(/^https?:\/\//)) {
+                    return (
+                      <Text
+                        key={index}
+                        style={[styles.linkText, item.is_mine ? styles.mineLink : styles.theirLink]}
+                        onPress={() => handleLinkPress(part)}
+                      >
+                        {part}
+                      </Text>
+                    );
+                  }
+                  return part;
+                })}
+              </Text>
               {item.is_mine && item.read_at ? <Text style={styles.readText}>Read</Text> : null}
             </View>
           )}
@@ -159,6 +215,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 10,
+  },
+  headerLeft: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
+    flex: 1,
+  },
+  headerProfileClick: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    flex: 1,
   },
   iconButton: {
     alignItems: 'center',
@@ -209,6 +277,15 @@ const styles = StyleSheet.create({
   },
   theirText: {
     color: '#11181C',
+  },
+  linkText: {
+    textDecorationLine: 'underline',
+  },
+  mineLink: {
+    color: '#fff',
+  },
+  theirLink: {
+    color: '#3B82F6',
   },
   readText: {
     color: '#D1D5DB',

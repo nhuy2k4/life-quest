@@ -14,6 +14,7 @@ from app.schemas.social import (
 	FollowResponse,
 	LikeResponse,
 	PostCreateRequest,
+	PostUpdateRequest,
 	PostResponse,
 )
 from app.services.social.social_service import SocialService
@@ -64,6 +65,17 @@ async def get_post(
 	service: SocialService = Depends(get_social_service),
 ) -> PostResponse:
 	return await service.get_post_by_id(user_id=current_user.id, post_id=post_id)
+
+
+@router.patch("/posts/{post_id}", response_model=PostResponse)
+async def update_post(
+	post_id: uuid.UUID,
+	payload: PostUpdateRequest,
+	current_user: CurrentUser = Depends(get_current_user),
+	service: SocialService = Depends(get_social_service),
+) -> PostResponse:
+	return await service.update_post(user_id=current_user.id, post_id=post_id, payload=payload)
+
 
 
 @router.get("/posts/{post_id}/share", response_class=HTMLResponse)

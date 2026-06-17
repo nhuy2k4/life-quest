@@ -27,6 +27,7 @@ export type FeedPost = {
   reasons?: string[];
   event_rank?: number | null;
   event_badge_url?: string | null;
+  is_eligible?: boolean;
 };
 
 export type FeedResponse = {
@@ -79,6 +80,7 @@ export function mapFeedPost(post: FeedPost): Post {
     recommendationScore: post.final_score,
     eventRank: post.event_rank ?? undefined,
     eventBadgeUrl: post.event_badge_url ?? undefined,
+    isEligible: post.is_eligible,
   };
 }
 
@@ -334,10 +336,39 @@ export async function getFriends(token: string, userId: string, page = 1, pageSi
   });
 }
 
+export async function getFollowers(token: string, userId: string, page = 1, pageSize = 20): Promise<{ items: FeedUser[]; total: number; page: number; page_size: number }> {
+  return requestJson(`/social/users/${userId}/followers?page=${page}&page_size=${pageSize}`, {
+    method: 'GET',
+    token,
+  });
+}
+
+export async function getFollowing(token: string, userId: string, page = 1, pageSize = 20): Promise<{ items: FeedUser[]; total: number; page: number; page_size: number }> {
+  return requestJson(`/social/users/${userId}/following?page=${page}&page_size=${pageSize}`, {
+    method: 'GET',
+    token,
+  });
+}
+
 export async function deletePost(token: string, postId: string): Promise<void> {
   await requestJson(`/social/posts/${postId}`, {
     method: 'DELETE',
     token,
+  });
+}
+
+export async function updatePost(
+  token: string,
+  postId: string,
+  payload: {
+    caption?: string | null;
+    visibility?: 'public' | 'friends' | 'private';
+  }
+): Promise<PostResponse> {
+  return requestJson<PostResponse>(`/social/posts/${postId}`, {
+    method: 'PATCH',
+    token,
+    body: JSON.stringify(payload),
   });
 }
 

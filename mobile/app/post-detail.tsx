@@ -10,14 +10,20 @@ import { ImageWithFallback } from '@/components/lifequest/ImageWithFallback';
 import { Avatar } from '@/components/ui/avatar';
 import { ROUTES } from '@/constants/routes';
 import { usePostContext } from '@/contexts/PostContext';
-import { getPost, likePost, unlikePost } from '@/services/socialService';
+import { getPost, likePost, unlikePost, deletePost, updatePost } from '@/services/socialService';
 import type { Post } from '@/types';
 import { getItem, StorageKeys } from '@/utils/storage';
+import { useToast } from '@/contexts/ToastContext';
+import { useUserContext } from '@/contexts/UserContext';
+import * as Clipboard from 'expo-clipboard';
+import { Modal } from 'react-native';
 
 export default function PostDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { posts, setPosts } = usePostContext();
+  const { posts, setPosts, hidePost } = usePostContext();
+  const { showToast } = useToast();
+  const { currentUser } = useUserContext();
   const postId = typeof params.postId === 'string' ? params.postId : undefined;
   const matched = useMemo(() => posts.find((item) => item.id === postId), [posts, postId]);
   const [fetchedPost, setFetchedPost] = useState<Post | null>(null);
@@ -25,10 +31,11 @@ export default function PostDetailScreen() {
   const post = matched || fetchedPost;
 
   const [liked, setLiked] = useState(Boolean(post?.isLiked));
-  const [saved, setSaved] = useState(false);
   const [commentOpen, setCommentOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [likeCount, setLikeCount] = useState(post?.likesCount ?? 0);
   const [commentCount, setCommentCount] = useState(post?.commentsCount ?? 0);
+  const [visibilityModalOpen, setVisibilityModalOpen] = useState(false);
 
   useEffect(() => {
     setLiked(Boolean(post?.isLiked));
@@ -56,6 +63,86 @@ export default function PostDetailScreen() {
     };
     fetchPostData();
   }, [postId]);
+
+  const isOwner = currentUser?.id === post?.author.id;
+
+  const onCopyLink = async () => {
+    if (!post) return;
+    const rawBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api/v1';
+    const baseUrl = rawBaseUrl.replace(/\/+$/, '');
+    const url = `${baseUrl}/social/posts/${post.id}/share`;
+    await Clipboard.setStringAsync(url);
+    showToast('Copied link.');
+    setMenuOpen(false);
+  };
+
+  const onHidePost = () => {
+    if (!post) return;
+    hidePost(post.id);
+    showToast('Post hidden.');
+    setMenuOpen(false);
+    router.back();
+  };
+
+  const onReportPost = () => {
+    showToast('Report submitted.');
+    setMenuOpen(false);
+  };
+
+  const onDeletePost = async () => {
+    if (!post) return;
+    const token = await getItem<string>(StorageKeys.accessToken);
+    if (!token) {
+      showToast('Bạn chưa đăng nhập.');
+      return;
+    }
+
+    try {
+      await deletePost(token, post.id);
+      setPosts((prev) => prev.filter((item) => item.id !== post.id));
+      showToast('Post deleted.');
+      router.back();
+    } catch {
+      showToast('Delete failed.');
+    } finally {
+      setMenuOpen(false);
+    }
+  };
+
+  const onChangeVisibility = async (newVisibility: 'public' | 'friends' | 'private') => {
+    if (!post) return;
+    if (post.event) {
+      showToast('Không thể đổi chế độ riêng tư của bài viết tham gia sự kiện.');
+      return;
+    }
+    const token = await getItem<string>(StorageKeys.accessToken);
+    if (!token) {
+      showToast('Bạn chưa đăng nhập.');
+      return;
+    }
+
+    try {
+      await updatePost(token, post.id, { visibility: newVisibility });
+      // Update in local state
+      if (fetchedPost) {
+        setFetchedPost({
+          ...fetchedPost,
+          visibility: newVisibility,
+        });
+      }
+      // Update in context
+      setPosts((prev) =>
+        prev.map((item) =>
+          item.id === post.id ? { ...item, visibility: newVisibility } : item
+        )
+      );
+      showToast('Đã cập nhật chế độ hiển thị.');
+    } catch {
+      showToast('Cập nhật thất bại.');
+    } finally {
+      setVisibilityModalOpen(false);
+    }
+  };
 
   if (loading && !post) {
     return (
@@ -172,7 +259,7 @@ export default function PostDetailScreen() {
             <Ionicons name="arrow-back" size={20} color="#11181C" />
           </Pressable>
           <Text style={styles.headerTitle}>Post</Text>
-          <Pressable style={styles.iconButton}>
+          <Pressable style={styles.iconButton} onPress={() => setMenuOpen(true)}>
             <Ionicons name="ellipsis-horizontal" size={20} color="#9CA3AF" />
           </Pressable>
         </View>
@@ -257,13 +344,7 @@ export default function PostDetailScreen() {
               <Pressable onPress={() => setCommentOpen(true)}>
                 <Ionicons name="chatbubble-outline" size={24} color="#11181C" />
               </Pressable>
-              <Pressable>
-                <Ionicons name="paper-plane-outline" size={24} color="#11181C" />
-              </Pressable>
             </View>
-            <Pressable onPress={() => setSaved((prev) => !prev)}>
-              <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={24} color="#11181C" />
-            </Pressable>
           </View>
 
           <Text style={styles.likesText}>{`${likeCount.toLocaleString()} likes`}</Text>
@@ -347,6 +428,62 @@ export default function PostDetailScreen() {
         postId={display.id}
         onCommentCountChange={updateCommentCount}
       />
+
+      <Modal transparent visible={menuOpen} animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={styles.menuOverlay} onPress={() => setMenuOpen(false)}>
+          <View style={styles.menuSheet}>
+            <Pressable style={styles.menuItem} onPress={onHidePost}>
+              <Text style={styles.menuText}>Hide post</Text>
+            </Pressable>
+            <Pressable style={styles.menuItem} onPress={onCopyLink}>
+              <Text style={styles.menuText}>Copy link</Text>
+            </Pressable>
+            <Pressable style={styles.menuItem} onPress={onReportPost}>
+              <Text style={styles.menuText}>Report</Text>
+            </Pressable>
+            {isOwner ? (
+              <>
+                <Pressable
+                  style={styles.menuItem}
+                  onPress={() => {
+                    if (post.event) {
+                      showToast('Bài viết tham gia Event luôn ở chế độ công khai.');
+                      return;
+                    }
+                    setMenuOpen(false);
+                    setVisibilityModalOpen(true);
+                  }}
+                >
+                  <Text style={styles.menuText}>Chế độ hiển thị</Text>
+                </Pressable>
+                <Pressable style={[styles.menuItem, styles.menuDanger]} onPress={onDeletePost}>
+                  <Text style={[styles.menuText, styles.menuDangerText]}>Delete</Text>
+                </Pressable>
+              </>
+            ) : null}
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal transparent visible={visibilityModalOpen} animationType="fade" onRequestClose={() => setVisibilityModalOpen(false)}>
+        <Pressable style={styles.menuOverlay} onPress={() => setVisibilityModalOpen(false)}>
+          <View style={styles.menuSheet}>
+            <Text style={styles.visibilityModalTitle}>Chọn chế độ hiển thị</Text>
+            <Pressable style={[styles.menuItem, { flexDirection: 'row', alignItems: 'center' }]} onPress={() => onChangeVisibility('public')}>
+              <Ionicons name="earth" size={16} color={post?.visibility === 'public' ? '#4F46E5' : '#6B7280'} style={{ marginRight: 8 }} />
+              <Text style={[styles.menuText, post?.visibility === 'public' && { color: '#4F46E5', fontWeight: '600' }]}>Công khai</Text>
+            </Pressable>
+            <Pressable style={[styles.menuItem, { flexDirection: 'row', alignItems: 'center' }]} onPress={() => onChangeVisibility('friends')}>
+              <Ionicons name="people" size={16} color={post?.visibility === 'friends' ? '#4F46E5' : '#6B7280'} style={{ marginRight: 8 }} />
+              <Text style={[styles.menuText, post?.visibility === 'friends' && { color: '#4F46E5', fontWeight: '600' }]}>Bạn bè</Text>
+            </Pressable>
+            <Pressable style={[styles.menuItem, { flexDirection: 'row', alignItems: 'center' }]} onPress={() => onChangeVisibility('private')}>
+              <Ionicons name="lock-closed" size={16} color={post?.visibility === 'private' ? '#4F46E5' : '#6B7280'} style={{ marginRight: 8 }} />
+              <Text style={[styles.menuText, post?.visibility === 'private' && { color: '#4F46E5', fontWeight: '600' }]}>Chỉ mình tôi</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
     </>
   );
 }
@@ -643,5 +780,44 @@ const styles = StyleSheet.create({
   emptyText: {
     color: '#9CA3AF',
     fontSize: 14,
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    justifyContent: 'flex-end',
+  },
+  menuSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 18,
+    gap: 4,
+  },
+  menuItem: {
+    paddingVertical: 12,
+  },
+  menuText: {
+    color: '#11181C',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  menuDanger: {
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  menuDangerText: {
+    color: '#B91C1C',
+  },
+  visibilityModalTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#374151',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    textAlign: 'center',
+    marginBottom: 8,
   },
 });

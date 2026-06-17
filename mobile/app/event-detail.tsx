@@ -49,6 +49,20 @@ function LeaderboardRow({ item }: { item: EventLeaderboardItem }) {
     </View>
   );
 }
+function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // Earth radius in meters
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
 
 export default function EventDetailScreen() {
   const router = useRouter();
@@ -105,9 +119,17 @@ export default function EventDetailScreen() {
   const openQuest = useCallback((questId: string) => {
     router.push({
       pathname: ROUTES.modal.questDetail as any,
-      params: { questId, isEvent: 'true' },
+      params: { 
+        questId, 
+        isEvent: 'true',
+        eventId: detail?.id,
+        eventLocationName: detail?.location_name ?? undefined,
+        eventLatitude: detail?.latitude != null ? String(detail.latitude) : undefined,
+        eventLongitude: detail?.longitude != null ? String(detail.longitude) : undefined,
+        eventRadiusM: detail?.radius_m != null ? String(detail.radius_m) : undefined,
+      },
     });
-  }, [router]);
+  }, [router, detail]);
 
   const handleCheckin = useCallback(async () => {
     setLocationStatus('checking');
@@ -118,15 +140,25 @@ export default function EventDetailScreen() {
         return;
       }
       const { latitude: lat, longitude: lng } = loc;
-      if (lat >= 15.90 && lat <= 16.25 && lng >= 107.80 && lng <= 108.35) {
-        setLocationStatus('passed');
+      if (detail && detail.latitude != null && detail.longitude != null) {
+        const radius = detail.radius_m || 100;
+        const dist = getDistanceMeters(lat, lng, detail.latitude, detail.longitude);
+        if (dist <= radius) {
+          setLocationStatus('passed');
+        } else {
+          setLocationStatus('failed');
+        }
       } else {
-        setLocationStatus('failed');
+        if (lat >= 15.90 && lat <= 16.25 && lng >= 107.80 && lng <= 108.35) {
+          setLocationStatus('passed');
+        } else {
+          setLocationStatus('failed');
+        }
       }
     } catch {
       setLocationStatus('failed');
     }
-  }, []);
+  }, [detail]);
 
   const loadEvent = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
     if (!eventId) return;
@@ -193,7 +225,7 @@ export default function EventDetailScreen() {
         <FlatList
           data={posts}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <PostCard post={item} />}
+          renderItem={({ item }) => <PostCard post={item} showEligibility={true} />}
           refreshing={refreshing}
           onRefresh={() => void loadEvent('refresh')}
           ListHeaderComponent={
@@ -215,6 +247,22 @@ export default function EventDetailScreen() {
                   <Text style={styles.title}>{detail?.title}</Text>
                   {detail?.description ? <Text style={styles.description}>{detail.description}</Text> : null}
 
+                  {detail?.latitude != null ? (
+                    <View style={styles.locationDetailRow}>
+                      <Ionicons name="location-sharp" size={14} color="#EF4444" />
+                      <Text style={styles.locationDetailText}>
+                        {`Vị trí yêu cầu: ${detail.location_name} (Bán kính: ${detail.radius_m}m)`}
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.locationDetailRow}>
+                      <Ionicons name="location-sharp" size={14} color="#6366F1" />
+                      <Text style={styles.locationDetailText}>
+                        Khu vực yêu cầu: Đà Nẵng
+                      </Text>
+                    </View>
+                  )}
+
                   {detail?.status === 'active' && detail.quests.length > 0 ? (
                     detail.is_joined ? (
                       <View style={styles.joinedBadge}>
@@ -224,7 +272,9 @@ export default function EventDetailScreen() {
                     ) : (
                       <View style={{ gap: 12, marginTop: 8 }}>
                         <Text style={styles.joinHint}>
-                          Sự kiện chỉ diễn ra ở Đà Nẵng, check in để tham gia.
+                          {detail.latitude != null
+                            ? `📍 Yêu cầu vị trí: ${detail.location_name} (bán kính check-in ${detail.radius_m}m). Vui lòng check-in để tham gia.`
+                            : '📍 Sự kiện chỉ diễn ra ở Đà Nẵng, check-in để tham gia.'}
                         </Text>
 
                         {locationStatus === 'idle' && (
@@ -251,7 +301,9 @@ export default function EventDetailScreen() {
                         {locationStatus === 'failed' && (
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FEF2F2', padding: 10, borderRadius: 8 }}>
                             <Ionicons name="warning" size={16} color="#DC2626" />
-                            <Text style={{ color: '#DC2626', fontSize: 13, fontWeight: '500' }}>Bạn hiện không ở Đà Nẵng</Text>
+                            <Text style={{ color: '#DC2626', fontSize: 13, fontWeight: '500', flex: 1 }}>
+                              Bạn hiện không ở vị trí này!
+                            </Text>
                           </View>
                         )}
                       </View>
@@ -494,6 +546,22 @@ export default function EventDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  locationDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    backgroundColor: '#F3F4F6',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  locationDetailText: {
+    color: '#374151',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   container: {
     backgroundColor: '#fff',
     flex: 1,

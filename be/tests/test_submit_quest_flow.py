@@ -66,12 +66,11 @@ async def seeded_flow_data(monkeypatch):
             difficulty="easy",
             approval_rate=1.0,
             time_limit_hours=24,
-            location_required=False,
+            location_required=True,
             is_active=True,
             template="Take a photo of a {label}",
             labels=["coffee"],
             min_confidence=0.5,
-            poi_required=True,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )

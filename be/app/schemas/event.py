@@ -37,6 +37,11 @@ class EventCreateRequest(BaseModel):
 	status: EventStatus | None = None
 	reward_config: list[EventRewardTier] = Field(default_factory=list)
 	quest_ids: list[uuid.UUID] = Field(default_factory=list)
+	location_name: str | None = None
+	latitude: float | None = None
+	longitude: float | None = None
+	radius_m: float | None = None
+
 
 
 class EventUpdateRequest(BaseModel):
@@ -48,6 +53,11 @@ class EventUpdateRequest(BaseModel):
 	status: EventStatus | None = None
 	reward_config: list[EventRewardTier] | None = None
 	quest_ids: list[uuid.UUID] | None = None
+	location_name: str | None = None
+	latitude: float | None = None
+	longitude: float | None = None
+	radius_m: float | None = None
+
 
 
 class EventListItem(BaseModel):
@@ -58,6 +68,11 @@ class EventListItem(BaseModel):
 	start_at: datetime
 	end_at: datetime
 	status: EventStatus
+	location_name: str | None = None
+	latitude: float | None = None
+	longitude: float | None = None
+	radius_m: float | None = None
+
 
 	model_config = {"from_attributes": True}
 
@@ -73,6 +88,11 @@ class EventDetailResponse(BaseModel):
 	reward_config: list[EventRewardTier]
 	quests: list[EventQuestItem]
 	is_joined: bool = False
+	location_name: str | None = None
+	latitude: float | None = None
+	longitude: float | None = None
+	radius_m: float | None = None
+
 
 	model_config = {"from_attributes": True}
 

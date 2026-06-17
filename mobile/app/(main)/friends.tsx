@@ -6,13 +6,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/ui/avatar';
 import { useUserContext } from '@/contexts/UserContext';
-import { getFriends } from '@/services/socialService';
+import { getFriends, getFollowers, getFollowing } from '@/services/socialService';
 import type { FeedUser } from '@/services/socialService';
 import { StorageKeys, getItem } from '@/utils/storage';
 
 export default function FriendsScreen() {
   const router = useRouter();
-  const { userId } = useLocalSearchParams<{ userId?: string }>();
+  const { userId, type = 'friends' } = useLocalSearchParams<{ userId?: string; type?: 'friends' | 'followers' | 'following' }>();
   const { currentUser } = useUserContext();
   const [friends, setFriends] = useState<FeedUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -20,21 +20,30 @@ export default function FriendsScreen() {
   const targetUserId = userId || currentUser?.id;
 
   useEffect(() => {
-    async function loadFriends() {
+    async function loadList() {
       if (!targetUserId) return;
+      setIsLoading(true);
       try {
         const token = await getItem<string>(StorageKeys.accessToken);
         if (!token) return;
-        const res = await getFriends(token, targetUserId, 1, 100);
+        
+        let res;
+        if (type === 'followers') {
+          res = await getFollowers(token, targetUserId, 1, 100);
+        } else if (type === 'following') {
+          res = await getFollowing(token, targetUserId, 1, 100);
+        } else {
+          res = await getFriends(token, targetUserId, 1, 100);
+        }
         setFriends(res.items);
       } catch (err) {
-        console.error('Failed to load friends', err);
+        console.error('Failed to load friends/followers/following list', err);
       } finally {
         setIsLoading(false);
       }
     }
-    void loadFriends();
-  }, [targetUserId]);
+    void loadList();
+  }, [targetUserId, type]);
 
   const handleUserPress = (id: string) => {
     if (id === currentUser?.id) {
@@ -50,7 +59,13 @@ export default function FriendsScreen() {
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#11181C" />
         </Pressable>
-        <Text style={styles.headerTitle}>Bạn bè</Text>
+        <Text style={styles.headerTitle}>
+          {type === 'followers'
+            ? 'Người theo dõi'
+            : type === 'following'
+            ? 'Đang theo dõi'
+            : 'Bạn bè'}
+        </Text>
         <View style={styles.backButton} />
       </View>
 
@@ -65,7 +80,7 @@ export default function FriendsScreen() {
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => (
             <Pressable style={styles.userRow} onPress={() => handleUserPress(item.id)}>
-              <Avatar uri={undefined} size={48} label={item.username.charAt(0)} />
+              <Avatar uri={item.avatar_url ?? undefined} size={48} label={item.username.charAt(0)} />
               <View style={styles.userInfo}>
                 <Text style={styles.userName}>{item.username}</Text>
                 <Text style={styles.userHandle}>@{item.username}</Text>
@@ -76,7 +91,13 @@ export default function FriendsScreen() {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="people-outline" size={48} color="#9CA3AF" />
-              <Text style={styles.emptyText}>Chưa có bạn bè nào</Text>
+              <Text style={styles.emptyText}>
+                {type === 'followers'
+                  ? 'Chưa có người theo dõi nào'
+                  : type === 'following'
+                  ? 'Chưa theo dõi ai'
+                  : 'Chưa có bạn bè nào'}
+              </Text>
             </View>
           }
         />

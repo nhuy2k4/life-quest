@@ -31,6 +31,21 @@ import { uploadImage } from '@/services/uploadService';
 import type { Post, Quest } from '@/types';
 import { StorageKeys, getItem, removeItem, setItem } from '@/utils/storage';
 
+function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // Earth radius in meters
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
+
 export default function CameraResultScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -53,6 +68,11 @@ export default function CameraResultScreen() {
   const [isEventQuest, setIsEventQuest] = useState(false);
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const [suggestedPoi, setSuggestedPoi] = useState<{ id: string; name: string } | null>(null);
+
+  const [eventLocationName, setEventLocationName] = useState<string | null>(null);
+  const [eventLatitude, setEventLatitude] = useState<number | null>(null);
+  const [eventLongitude, setEventLongitude] = useState<number | null>(null);
+  const [eventRadiusM, setEventRadiusM] = useState<number | null>(null);
 
   // Caching uploaded image details to prevent redundant network calls
   const [uploadedCache, setUploadedCache] = useState<{ url: string; publicId: string } | null>(null);
@@ -135,6 +155,11 @@ export default function CameraResultScreen() {
           poi_name?: string | null;
           poi_required?: boolean;
           isEvent?: boolean;
+          eventId?: string | null;
+          eventLocationName?: string | null;
+          eventLatitude?: number | null;
+          eventLongitude?: number | null;
+          eventRadiusM?: number | null;
         }>(StorageKeys.attachedQuest);
 
         if (cameraMode === 'quest' && raw) {
@@ -150,14 +175,16 @@ export default function CameraResultScreen() {
           attachedPoiRef.current = raw.poi_id ?? null;
           activeQuestPoiId = raw.poi_id ?? null;
           setQuestPoiId(raw.poi_id ?? null);
+          setEventLocationName(raw.eventLocationName ?? null);
+          setEventLatitude(raw.eventLatitude ?? null);
+          setEventLongitude(raw.eventLongitude ?? null);
+          setEventRadiusM(raw.eventRadiusM ?? null);
         }
       } catch (err) {
         console.log('Error hydrating attached quest', err);
       }
 
-      if (!isEvent) {
-        setIsCheckingLocation(true);
-      }
+      setIsCheckingLocation(true);
       const startTime = Date.now();
 
       setIsLocating(true);
@@ -194,7 +221,34 @@ export default function CameraResultScreen() {
         });
 
         const { latitude, longitude, accuracy } = currentPos.coords;
-        if (!isEvent) {
+        if (isEvent) {
+          const storedQuest = await getItem<{
+            eventLatitude?: number | null;
+            eventLongitude?: number | null;
+            eventRadiusM?: number | null;
+            eventLocationName?: string | null;
+          }>(StorageKeys.attachedQuest);
+
+          if (storedQuest && storedQuest.eventLatitude != null && storedQuest.eventLongitude != null) {
+            const radius = storedQuest.eventRadiusM || 100;
+            const dist = getDistanceMeters(latitude, longitude, storedQuest.eventLatitude, storedQuest.eventLongitude);
+            if (dist <= radius) {
+              setPoiId(null);
+              setLocation(storedQuest.eventLocationName || 'Khu vực sự kiện');
+            } else {
+              setPoiId(null);
+              setLocation('');
+            }
+          } else {
+            if (latitude >= 15.90 && latitude <= 16.25 && longitude >= 107.80 && longitude <= 108.35) {
+              setPoiId(null);
+              setLocation('Đà Nẵng');
+            } else {
+              setPoiId(null);
+              setLocation('');
+            }
+          }
+        } else {
           const suggestion = await suggestPoi(latitude, longitude, accuracy);
           
           if (suggestion.poi_id && suggestion.name) {
@@ -346,6 +400,7 @@ export default function CameraResultScreen() {
             caption: caption.trim() || undefined,
             locationName: location.trim() || undefined,
             poiId,
+            visibility,
           });
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Lỗi không xác định';
@@ -462,7 +517,7 @@ export default function CameraResultScreen() {
 
         {isQuestFlow ? (
           <>
-            {isCheckingLocation && !isEventQuest ? (
+            {isCheckingLocation ? (
               <View style={styles.section}>
                 <View style={styles.checkingBox}>
                   <ActivityIndicator size="small" color="#4F46E5" style={{ marginRight: 8 }} />
@@ -473,7 +528,30 @@ export default function CameraResultScreen() {
               </View>
             ) : (
               <>
-                {location && poiId ? (
+                {isEventQuest && location ? (
+                  <View style={styles.section}>
+                    <View style={styles.locationInputRow}>
+                      <Ionicons name="location" size={18} color="#10B981" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.locationHint}>Đã check-in vị trí sự kiện</Text>
+                        <Text style={styles.locationText}>{location}</Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : null}
+
+                {isEventQuest && !location ? (
+                  <View style={styles.section}>
+                    <View style={styles.warningBox}>
+                      <Ionicons name="warning-outline" size={18} color="#DC2626" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.warningText}>Bạn hiện không ở vị trí này!</Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : null}
+
+                {!isEventQuest && location && poiId ? (
                   <View style={styles.section}>
                     <View style={styles.locationInputRow}>
                       <Ionicons name="location" size={18} color="#10B981" />
@@ -490,7 +568,7 @@ export default function CameraResultScreen() {
                   </View>
                 ) : null}
 
-                {questPoiId && !poiId && !isEventQuest ? (
+                {!isEventQuest && questPoiId && !poiId ? (
                   <View style={styles.section}>
                     <View style={styles.warningBox}>
                       <Ionicons name="warning-outline" size={18} color="#DC2626" />

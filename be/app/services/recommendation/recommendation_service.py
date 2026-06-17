@@ -503,6 +503,22 @@ class RecommendationService:
 			preferred_category_ids=preferred_category_ids,
 			post_quest_id=post_quest_id,
 		)
+		friends_subquery = select(Follow.following_id).where(
+			Follow.follower_id == user_id,
+			Follow.following_id.in_(
+				select(Follow.follower_id).where(Follow.following_id == user_id)
+			)
+		)
+		from app.models.enums import PostVisibility
+		visibility_filter = or_(
+			Post.visibility == PostVisibility.PUBLIC,
+			and_(
+				Post.visibility == PostVisibility.FRIENDS,
+				or_(Post.user_id.in_(friends_subquery), Post.user_id == user_id)
+			),
+			and_(Post.visibility == PostVisibility.PRIVATE, Post.user_id == user_id),
+		)
+
 		base_query = (
 			select(Post)
 			.join(User, Post.user_id == User.id)
@@ -529,6 +545,7 @@ class RecommendationService:
 				.selectinload(Quest.categories),
 				selectinload(Post.event),
 			)
+			.where(visibility_filter)
 		)
 		ranked_order = (
 			(
