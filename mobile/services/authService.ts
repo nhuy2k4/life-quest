@@ -12,10 +12,6 @@ type LoginRequest = {
   password: string;
 };
 
-type GoogleLoginRequest = {
-  id_token: string;
-};
-
 type RefreshTokenRequest = {
   refresh_token: string;
 };
@@ -76,14 +72,6 @@ export async function resendOtp(request: ResendOtpRequest): Promise<MessageRespo
   return requestJson<MessageResponse>(`${AUTH_BASE_PATH}/resend-otp`, {
     method: 'POST',
     body: JSON.stringify(request),
-  });
-}
-
-export async function loginWithGoogle(idToken: string): Promise<TokenResponse> {
-  const payload: GoogleLoginRequest = { id_token: idToken };
-  return requestJson<TokenResponse>(`${AUTH_BASE_PATH}/google/login`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
   });
 }
 

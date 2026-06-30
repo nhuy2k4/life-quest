@@ -14,12 +14,9 @@ export default function LoginScreen() {
     errors,
     apiError,
     isLoading,
-    isGoogleLoading,
-    googleDebug,
     setUsername,
     setPassword,
     handleLogin,
-    handleGoogleLogin,
   } = useLogin();
 
   return (
@@ -52,14 +49,6 @@ export default function LoginScreen() {
           {apiError ? <Text style={styles.apiError}>{apiError}</Text> : null}
 
           <LQButton title="Login" variant="primary" fullWidth loading={isLoading} onPress={handleLogin} />
-          <LQButton
-            title="Continue with Google"
-            variant="outline"
-            fullWidth
-            loading={isGoogleLoading}
-            onPress={handleGoogleLogin}
-          />
-          <Text style={styles.debugText}>{`Google debug: ${googleDebug}`}</Text>
         </View>
 
         <View style={styles.footer}>
@@ -113,10 +102,6 @@ const styles = StyleSheet.create({
     color: '#B91C1C',
     fontSize: 13,
     marginTop: -4,
-  },
-  debugText: {
-    color: '#6B7280',
-    fontSize: 12,
   },
   footer: {
     alignItems: 'center',

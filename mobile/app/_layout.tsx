@@ -39,7 +39,6 @@ export default function RootLayout() {
                     <Stack.Screen name="(auth)" />
                     <Stack.Screen name="(onboarding)" />
                     <Stack.Screen name="(main)" />
-                    <Stack.Screen name="auth/callback" options={{ presentation: 'transparentModal', headerShown: false }} />
                     <Stack.Screen name="post-detail" />
                     <Stack.Screen name="quest-detail" />
                   </Stack>
