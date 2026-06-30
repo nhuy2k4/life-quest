@@ -1,0 +1,172 @@
+{
+  "Street view": {
+    "quest_id": "c6ed305f-387b-40a9-89b3-3dbb25ccc7ec",
+    "selected_folder": null,
+    "selected_file": null,
+    "image_url": null,
+    "candidate_weights": {},
+    "reason": "no high-relevance folder match"
+  },
+  "Bridge view": {
+    "quest_id": "727da918-a20b-473a-b524-3bc0d7a46943",
+    "selected_folder": "bridge",
+    "selected_file": "bridge001.jpg",
+    "image_url": "/seed-images/bridge/bridge001.jpg",
+    "candidate_weights": {
+      "bridge": 1.0
+    },
+    "reason": "selected from high-relevance folder pool"
+  },
+  "Food stop": {
+    "quest_id": "e8abf7a5-1913-4a0d-8ffb-3c193c1a999d",
+    "selected_folder": null,
+    "selected_file": null,
+    "image_url": null,
+    "candidate_weights": {},
+    "reason": "no high-relevance folder match"
+  },
+  "Restaurant hunt": {
+    "quest_id": "8b80cd27-e00d-47fa-8b81-1f7f063145f7",
+    "selected_folder": null,
+    "selected_file": null,
+    "image_url": null,
+    "candidate_weights": {},
+    "reason": "no high-relevance folder match"
+  },
+  "Building shot": {
+    "quest_id": "1ad18312-8d6b-4aff-91dd-d0cc799f1136",
+    "selected_folder": null,
+    "selected_file": null,
+    "image_url": null,
+    "candidate_weights": {},
+    "reason": "no high-relevance folder match"
+  },
+  "River view": {
+    "quest_id": "9e5993fb-2f27-4d8d-bcfe-d06da268b449",
+    "selected_folder": null,
+    "selected_file": null,
+    "image_url": null,
+    "candidate_weights": {},
+    "reason": "no high-relevance folder match"
+  },
+  "Drink moment": {
+    "quest_id": "d768a33e-6b13-40b9-9b4b-8f0d06aeb28c",
+    "selected_folder": "coffee",
+    "selected_file": "coffee001.jpg",
+    "image_url": "/seed-images/coffee/coffee001.jpg",
+    "candidate_weights": {
+      "coffee": 2.0
+    },
+    "reason": "selected from high-relevance folder pool"
+  },
+  "Coffee hunt": {
+    "quest_id": "933e853e-0111-40c7-ac46-a71abbd33287",
+    "selected_folder": "coffee",
+    "selected_file": "coffee003.jpg",
+    "image_url": "/seed-images/coffee/coffee003.jpg",
+    "candidate_weights": {
+      "coffee": 5.0
+    },
+    "reason": "selected from high-relevance folder pool"
+  },
+  "Market visit": {
+    "quest_id": "248752f9-d237-46a9-9d38-757afdf418c7",
+    "selected_folder": null,
+    "selected_file": null,
+    "image_url": null,
+    "candidate_weights": {},
+    "reason": "no high-relevance folder match"
+  },
+  "Park moment": {
+    "quest_id": "e265e459-202d-401d-8f35-f444090a060d",
+    "selected_folder": null,
+    "selected_file": null,
+    "image_url": null,
+    "candidate_weights": {},
+    "reason": "no high-relevance folder match"
+  },
+  "Pen shot": {
+    "quest_id": "26bf5917-413d-4456-8b60-3da04fa264d4",
+    "selected_folder": null,
+    "selected_file": null,
+    "image_url": null,
+    "candidate_weights": {},
+    "reason": "no high-relevance folder match"
+  },
+  "Laptop shot": {
+    "quest_id": "362b5353-41f4-463f-9b6d-11d131950ead",
+    "selected_folder": "laptop",
+    "selected_file": "laptop003.jpg",
+    "image_url": "/seed-images/laptop/laptop003.jpg",
+    "candidate_weights": {
+      "laptop": 1.0
+    },
+    "reason": "selected from high-relevance folder pool"
+  },
+  "Table shot": {
+    "quest_id": "39f6628f-6e3d-4cd0-a663-c6ad3e61b979",
+    "selected_folder": null,
+    "selected_file": null,
+    "image_url": null,
+    "candidate_weights": {},
+    "reason": "no high-relevance folder match"
+  },
+  "Bag shot": {
+    "quest_id": "5b33e386-726f-4b02-8d32-1d96edfc5cf9",
+    "selected_folder": "bag",
+    "selected_file": "bag001.jpg",
+    "image_url": "/seed-images/bag/bag001.jpg",
+    "candidate_weights": {
+      "bag": 1.0
+    },
+    "reason": "selected from high-relevance folder pool"
+  },
+  "Chair shot": {
+    "quest_id": "96fe0c18-7136-4a36-b6e1-a64710e77532",
+    "selected_folder": null,
+    "selected_file": null,
+    "image_url": null,
+    "candidate_weights": {},
+    "reason": "no high-relevance folder match"
+  },
+  "People shot": {
+    "quest_id": "a65f6494-33a0-413b-9f67-c89306f2b08d",
+    "selected_folder": "person",
+    "selected_file": "person001.jpg",
+    "image_url": "/seed-images/person/person001.jpg",
+    "candidate_weights": {
+      "person": 1.0
+    },
+    "reason": "selected from high-relevance folder pool"
+  },
+  "Drinkware shot": {
+    "quest_id": "b99eb8ce-8b14-4cb8-81d5-b5d71e3ac8df",
+    "selected_folder": "coffee",
+    "selected_file": "coffee001.jpg",
+    "image_url": "/seed-images/coffee/coffee001.jpg",
+    "candidate_weights": {
+      "coffee": 1.0
+    },
+    "reason": "selected from high-relevance folder pool"
+  },
+  "Dog shot": {
+    "quest_id": "d5a5923a-942a-43ec-90e1-859bda8833c0",
+    "selected_folder": "dog",
+    "selected_file": "dog003.jpg",
+    "image_url": "/seed-images/dog/dog003.jpg",
+    "candidate_weights": {
+      "dog": 1.0
+    },
+    "reason": "selected from high-relevance folder pool"
+  },
+  "Cat shot": {
+    "quest_id": "d9bfde7a-fd9f-4562-b64b-3f7b4bec7fd5",
+    "selected_folder": "cat",
+    "selected_file": "cat001.jpg",
+    "image_url": "/seed-images/cat/cat001.jpg",
+    "candidate_weights": {
+      "cat": 1.0
+    },
+    "reason": "selected from high-relevance folder pool"
+  }
+}

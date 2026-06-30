@@ -1,0 +1,121 @@
+{
+  "meta": {
+    "source": "LifeQuest current photo-object quests",
+    "quest_key_format": "quest title",
+    "high_relevance_only": true,
+    "weighting_rule": "Keep only folders with strong semantic overlap; if a quest has multiple strong matches, sample by weight."
+  },
+  "folder_vision_labels": {
+    "coffee": ["coffee", "cup", "mug", "drink", "beverage", "drinkware", "water bottle"],
+    "dog": ["dog", "puppy", "pet", "canine"],
+    "cat": ["cat", "kitten", "pet", "feline"],
+    "laptop": ["laptop", "computer", "personal computer", "notebook computer"],
+    "person": ["person", "people", "human", "face", "selfie"],
+    "bag": ["bag", "backpack", "handbag", "luggage"],
+    "bridge": ["bridge", "overpass", "viaduct", "flyover"]
+  },
+  "suitability_matrix": {
+    "Table shot": {
+      "coffee": 0.0,
+      "dog": 0.0,
+      "cat": 0.0,
+      "laptop": 0.0,
+      "person": 0.0,
+      "bag": 0.0,
+      "bridge": 0.0
+    },
+    "Pen shot": {
+      "coffee": 0.0,
+      "dog": 0.0,
+      "cat": 0.0,
+      "laptop": 0.0,
+      "person": 0.0,
+      "bag": 0.0,
+      "bridge": 0.0
+    },
+    "Laptop shot": {
+      "coffee": 0.0,
+      "dog": 0.0,
+      "cat": 0.0,
+      "laptop": 1.0,
+      "person": 0.0,
+      "bag": 0.0,
+      "bridge": 0.0
+    },
+    "Bag shot": {
+      "coffee": 0.0,
+      "dog": 0.0,
+      "cat": 0.0,
+      "laptop": 0.0,
+      "person": 0.0,
+      "bag": 1.0,
+      "bridge": 0.0
+    },
+    "Drinkware shot": {
+      "coffee": 1.0,
+      "dog": 0.0,
+      "cat": 0.0,
+      "laptop": 0.0,
+      "person": 0.0,
+      "bag": 0.0,
+      "bridge": 0.0
+    },
+    "People shot": {
+      "coffee": 0.0,
+      "dog": 0.0,
+      "cat": 0.0,
+      "laptop": 0.0,
+      "person": 1.0,
+      "bag": 0.0,
+      "bridge": 0.0
+    },
+    "Dog shot": {
+      "coffee": 0.0,
+      "dog": 1.0,
+      "cat": 0.0,
+      "laptop": 0.0,
+      "person": 0.0,
+      "bag": 0.0,
+      "bridge": 0.0
+    },
+    "Cat shot": {
+      "coffee": 0.0,
+      "dog": 0.0,
+      "cat": 1.0,
+      "laptop": 0.0,
+      "person": 0.0,
+      "bag": 0.0,
+      "bridge": 0.0
+    },
+    "Chair shot": {
+      "coffee": 0.0,
+      "dog": 0.0,
+      "cat": 0.0,
+      "laptop": 0.0,
+      "person": 0.0,
+      "bag": 0.0,
+      "bridge": 0.0
+    }
+  },
+  "quest_folder_weights": {
+    "Laptop shot": {
+      "laptop": 1.0
+    },
+    "Bag shot": {
+      "bag": 1.0
+    },
+    "Drinkware shot": {
+      "coffee": 1.0
+    },
+    "People shot": {
+      "person": 1.0
+    },
+    "Dog shot": {
+      "dog": 1.0
+    },
+    "Cat shot": {
+      "cat": 1.0
+    }
+  },
+  "unmapped_quests": ["Table shot", "Pen shot", "Chair shot"]
+}

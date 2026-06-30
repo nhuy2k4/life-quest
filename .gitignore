@@ -44,8 +44,7 @@ htmlcov/
 
 # Others
 *.swp
-*.json
-!web/vercel.json
+be/google-vision.json
 
 .vercel
 .env*
