@@ -31,7 +31,7 @@ class VisionService:
 	def __init__(self) -> None:
 		self.client = create_vision_client()
 
-	def detect_labels_from_url(self, image_url: str, *, max_results: int = 10) -> VisionResult:
+	def detect_labels_from_url(self, image_url: str, *, max_results: int = 20) -> VisionResult:
 		content = self._download_image_bytes(image_url)
 		from google.cloud import vision
 		image = vision.Image(content=content)

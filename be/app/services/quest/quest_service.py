@@ -566,6 +566,7 @@ class QuestService:
                     data={
                         "submission_id": str(submission.id),
                         "quest_id": str(quest.id),
+                        "post_id": str(linked_post_id) if linked_post_id else None,
                         "reason": location_fail_reason,
                         "retry_count": submission.retry_count,
                         "consolation_xp": 0,
@@ -650,6 +651,7 @@ class QuestService:
                 data={
                     "submission_id": str(submission.id),
                     "quest_id": str(quest.id),
+                    "post_id": str(linked_post_id) if linked_post_id else None,
                     "reason": location_fail_reason,
                     "retry_count": submission.retry_count,
                     "consolation_xp": 0,

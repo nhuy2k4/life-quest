@@ -115,12 +115,16 @@ async def _process_submission_ai(submission_id: str) -> None:
 					submission_id=submission.id,
 					amount=xp_granted,
 				)
+			post_id = await session.scalar(
+				select(Post.id).where(Post.submission_id == submission.id)
+			)
 			await NotificationService(session).create_notification(
 				user_id=submission.user_quest.user_id,
 				notification_type="quest_complete",
 				data={
 					"submission_id": str(submission.id),
 					"quest_id": str(submission.user_quest.quest_id),
+					"post_id": str(post_id) if post_id else None,
 					"xp_granted": xp_granted,
 					"poi_validated": poi_validated,
 				},
@@ -242,12 +246,16 @@ async def _process_submission_ai(submission_id: str) -> None:
 						if level and user.level_id != level.id:
 							user.level_id = level.id
 
+			post_id = await session.scalar(
+				select(Post.id).where(Post.submission_id == submission.id)
+			)
 			await NotificationService(session).create_notification(
 				user_id=submission.user_quest.user_id,
 				notification_type="quest_rejected",
 				data={
 					"submission_id": str(submission.id),
 					"quest_id": str(submission.user_quest.quest_id),
+					"post_id": str(post_id) if post_id else None,
 					"reason": submission.ai_metadata.get("reason") if submission.ai_metadata else None,
 					"retry_count": submission.retry_count,
 					"consolation_xp": consolation_awarded,

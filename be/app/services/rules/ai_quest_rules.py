@@ -21,7 +21,8 @@ def evaluate_ai_quest(
     poi_distance_m: float | None,
     poi_required: bool = False,
 ) -> RuleResult:
-    label_scores = {item.get("label", "").lower(): float(item.get("score", 0.0)) for item in vision_labels}
+    import re
+
     label_thresholds = {key.lower(): float(value) for key, value in (label_rules or {}).items()}
     matched_label = None
     matched_confidence = None
@@ -33,12 +34,28 @@ def evaluate_ai_quest(
 
     for label in all_target_labels:
         label_key = label.lower()
-        score = label_scores.get(label_key)
         threshold = label_thresholds.get(label_key, min_confidence)
-        if score is not None and score >= threshold:
-            matched_label = label
-            matched_confidence = score
-            break
+        
+        # Collect all scores from vision labels matching exactly or as a whole-word substring
+        matching_scores = []
+        for item in vision_labels:
+            detected_label = item.get("label", "").lower()
+            score = float(item.get("score", 0.0))
+            
+            if label_key == detected_label:
+                matching_scores.append(score)
+            else:
+                # Use regex with word boundaries to match "hair" in "black hair", but not "car" in "cartoon"
+                pattern = r'\b' + re.escape(label_key) + r'\b'
+                if re.search(pattern, detected_label):
+                    matching_scores.append(score)
+                    
+        if matching_scores:
+            best_score = max(matching_scores)
+            if best_score >= threshold:
+                matched_label = label
+                matched_confidence = best_score
+                break
 
     if matched_label is None:
         return RuleResult(

@@ -80,12 +80,18 @@ class SubmissionService:
 			submission_id=submission.id,
 			amount=submission.user_quest.quest.xp_reward,
 		)
+		from sqlalchemy import select
+		from app.models.social import Post
+		post_id = await self.repository.db.scalar(
+			select(Post.id).where(Post.submission_id == submission.id)
+		)
 		await NotificationService(self.repository.db).create_notification(
 			user_id=submission.user_quest.user_id,
 			notification_type="quest_complete",
 			data={
 				"submission_id": str(submission.id),
 				"quest_id": str(submission.user_quest.quest_id),
+				"post_id": str(post_id) if post_id else None,
 				"xp_granted": xp_granted,
 			},
 		)
@@ -125,12 +131,18 @@ class SubmissionService:
 		# 	.where(Post.submission_id == submission.id)
 		# 	.values(event_id=None)
 		# )
+		from sqlalchemy import select
+		from app.models.social import Post
+		post_id = await self.repository.db.scalar(
+			select(Post.id).where(Post.submission_id == submission.id)
+		)
 		await NotificationService(self.repository.db).create_notification(
 			user_id=submission.user_quest.user_id,
 			notification_type="quest_rejected",
 			data={
 				"submission_id": str(submission.id),
 				"quest_id": str(submission.user_quest.quest_id),
+				"post_id": str(post_id) if post_id else None,
 				"reason": reason.strip(),
 				"retry_count": submission.retry_count,
 			},

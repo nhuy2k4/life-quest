@@ -113,3 +113,66 @@ def test_ai_approval_manual_review_suspicious_label():
 
     assert decision.decision == ApprovalDecisionType.MANUAL_REVIEW
     assert decision.is_suspicious is True
+
+
+def test_ai_approval_substring_label_matching():
+    # Detect 'black hair' which contains whole word 'hair'
+    labels = [
+        VisionLabel("black hair", 0.95),
+        VisionLabel("t-shirt", 0.9),
+    ]
+    submission = _build_submission(
+        title="People shot",
+        description="Take a photo of a person",
+        image_url="https://example.com/image.jpg",
+        file_hash="d" * 32,
+        labels=["hair"],
+    )
+    service = AIApprovalService(vision_service=FakeVisionService(labels))
+
+    decision = service.evaluate_submission(submission)
+
+    assert decision.decision == ApprovalDecisionType.APPROVE
+    assert decision.ai_metadata["matched_label"] == "hair"
+    assert decision.ai_metadata["confidence"] == 0.95
+
+
+def test_ai_approval_substring_label_no_false_positive():
+    # Detect 'cartoon' which contains 'car' but not as a whole word
+    labels = [
+        VisionLabel("cartoon", 0.95),
+    ]
+    submission = _build_submission(
+        title="Car shot",
+        description="Take a photo of a car",
+        image_url="https://example.com/image.jpg",
+        file_hash="e" * 32,
+        labels=["car"],
+    )
+    service = AIApprovalService(vision_service=FakeVisionService(labels))
+
+    decision = service.evaluate_submission(submission)
+
+    assert decision.decision == ApprovalDecisionType.REJECT
+
+
+def test_ai_approval_anti_cheat_concatenation_no_false_positive():
+    # Detect 'computer monitor' and 'software engineering'
+    # which when joined could collide to match 'monitor software'
+    labels = [
+        VisionLabel("computer monitor", 0.95),
+        VisionLabel("software engineering", 0.9),
+    ]
+    submission = _build_submission(
+        title="Coding",
+        description="Write code",
+        image_url="https://example.com/image.jpg",
+        file_hash="f" * 32,
+        labels=["computer monitor"],
+    )
+    service = AIApprovalService(vision_service=FakeVisionService(labels))
+
+    decision = service.evaluate_submission(submission)
+
+    assert decision.cheat_flags["anti_cheat"]["definite_screenshot"] is False
+    assert decision.is_suspicious is False

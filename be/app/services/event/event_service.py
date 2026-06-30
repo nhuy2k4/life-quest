@@ -257,6 +257,7 @@ class EventService:
 			if len(quests) != len(set(payload.quest_ids)):
 				raise NotFoundException("Quest khong ton tai")
 			await self._set_event_quests(event_id=event.id, quest_ids=payload.quest_ids)
+			self.db.expire(event, ["quests"])
 
 		await self.db.commit()
 		return await self.get_event_detail(event_id=event.id)
@@ -470,7 +471,8 @@ class EventService:
 			return
 
 		now = datetime.now(timezone.utc)
-		if not force and event.end_at > now:
+		end_at = event.end_at.replace(tzinfo=timezone.utc) if event.end_at.tzinfo is None else event.end_at
+		if not force and end_at > now:
 			return
 
 		await self._finalize_event(event)

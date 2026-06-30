@@ -14,11 +14,16 @@ class AntiCheatResult:
 def evaluate_anti_cheat(*, file_hash: str | None, labels: list[VisionLabel]) -> AntiCheatResult:
 	# "display" is too broad and blocks any real photo taken near a monitor/TV
 	suspicious_keywords = {"screenshot", "webpage", "monitor software"} 
-	label_text = " ".join(label.description.lower() for label in labels)
-	has_heavy_cheat_label = any(keyword in label_text for keyword in suspicious_keywords)
+	has_heavy_cheat_label = any(
+		any(keyword in label.description.lower() for keyword in suspicious_keywords)
+		for label in labels
+	)
 	
 	# Screen present but might be background
-	has_generic_screen = any(kw in label_text for kw in {"screen", "display"})
+	has_generic_screen = any(
+		any(kw in label.description.lower() for kw in {"screen", "display"})
+		for label in labels
+	)
 
 	flags: dict[str, object] = {
 		"has_file_hash": bool(file_hash),
