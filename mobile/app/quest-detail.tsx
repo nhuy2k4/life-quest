@@ -163,11 +163,8 @@ const [totalXpWithPoi, setTotalXpWithPoi] = useState(0);
         }
 
         let desc = '';
-        if (detail.labels && detail.labels.length > 0) {
-          desc = `Category: ${detail.labels.join(', ')}`;
-        }
         if ((isEvent || !!detail.is_event) && displayEventLocationName) {
-          desc = desc ? `${desc} • Vị trí: ${displayEventLocationName}` : `Vị trí: ${displayEventLocationName}`;
+          desc = `Vị trí: ${displayEventLocationName}`;
         }
         setQuestDescription(desc);
         setQuestXp(hasLocationContext ? detail.total_xp_with_poi : detail.base_xp);
@@ -190,7 +187,6 @@ const [totalXpWithPoi, setTotalXpWithPoi] = useState(0);
   }, [questId, poiId, routePoiName]);
 
   const { statusLabel, buttonTitle, isButtonDisabled, buttonVariant } = useMemo(() => {
-    console.log('[QuestDetail] isEventQuestFromServer:', isEventQuestFromServer, 'isEvent:', isEvent, 'userStatus:', userStatus);
 
     if (isEventQuestFromServer && !isEvent && userStatus === 'not_started') {
       return {

@@ -132,8 +132,6 @@ export function useLogin() {
 
     try {
       const authResult = await promptAsync();
-
-      console.log('[GoogleAuth] authResult.type:', authResult.type);
       setGoogleDebug(`auth_result_${authResult.type}`);
 
       if (authResult.type === 'error') {
@@ -171,8 +169,6 @@ export function useLogin() {
 
       try {
         const idToken = (response as { params?: { id_token?: string } }).params?.id_token;
-
-        console.log('[GoogleAuth] hasIdToken from response:', Boolean(idToken));
         setGoogleDebug(idToken ? 'id_token_ready' : 'id_token_missing');
 
         if (!idToken) {
@@ -182,10 +178,8 @@ export function useLogin() {
           );
         }
 
-        console.log('[GoogleAuth] calling backend /auth/google/login');
         setGoogleDebug('calling_backend_google_login');
         const tokenResponse = await loginWithGoogle(idToken);
-        console.log('[GoogleAuth] backend login success');
         setGoogleDebug('backend_google_login_success');
 
         await persistSession(

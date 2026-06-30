@@ -11,6 +11,7 @@ export default function CameraScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<'back' | 'front'>('back');
   const [torchEnabled, setTorchEnabled] = useState(false);
+  const [zoom, setZoom] = useState(0);
   const cameraRef = useRef<CameraView | null>(null);
   const router = useRouter();
 
@@ -75,31 +76,56 @@ export default function CameraScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.previewContainer}>
-        <CameraView ref={cameraRef} style={styles.camera} facing={facing} enableTorch={torchEnabled} />
+        <CameraView
+          ref={cameraRef}
+          style={styles.camera}
+          facing={facing}
+          enableTorch={torchEnabled}
+          zoom={zoom}
+        />
 
         <View pointerEvents="box-none" style={styles.overlayLayer}>
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
-            <Ionicons name="arrow-back" size={24} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setTorchEnabled((prev) => !prev)} style={styles.iconBtn}>
-            <Ionicons name={torchEnabled ? 'flash' : 'flash-off'} size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setTorchEnabled((prev) => !prev)} style={styles.iconBtn}>
+              <Ionicons name={torchEnabled ? 'flash' : 'flash-off'} size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
 
-        <View style={styles.bottomBar}>
-          <TouchableOpacity onPress={handleCapture} style={styles.shutterBtn}>
-            <View style={styles.shutterOuter}>
-              <View style={styles.shutterInner} />
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setFacing((prev) => (prev === 'back' ? 'front' : 'back'))}
-            style={styles.iconBtn}
-          >
-            <Ionicons name="camera-reverse" size={28} color="#fff" />
-          </TouchableOpacity>
-        </View>
+          {/* Zoom controls */}
+          <View style={styles.zoomContainer}>
+            {[0, 0.25, 0.5].map((z, idx) => {
+              const label = idx === 0 ? '1x' : idx === 1 ? '2x' : '3x';
+              const active = zoom === z;
+              return (
+                <TouchableOpacity
+                  key={z}
+                  onPress={() => setZoom(z)}
+                  style={[styles.zoomBtn, active && styles.zoomBtnActive]}
+                >
+                  <Text style={[styles.zoomBtnText, active && styles.zoomBtnTextActive]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={styles.bottomBar}>
+            <TouchableOpacity onPress={handleCapture} style={styles.shutterBtn}>
+              <View style={styles.shutterOuter}>
+                <View style={styles.shutterInner} />
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setFacing((prev) => (prev === 'back' ? 'front' : 'back'))}
+              style={styles.iconBtn}
+            >
+              <Ionicons name="camera-reverse" size={28} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </SafeAreaView>
@@ -123,6 +149,38 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 24,
     zIndex: 10,
+  },
+  zoomContainer: {
+    position: 'absolute',
+    bottom: 140,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    zIndex: 10,
+  },
+  zoomBtn: {
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  zoomBtnActive: {
+    backgroundColor: '#fff',
+    borderColor: '#fff',
+  },
+  zoomBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  zoomBtnTextActive: {
+    color: '#000',
   },
   bottomBar: {
     position: 'absolute',

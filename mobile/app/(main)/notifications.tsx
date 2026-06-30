@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -161,6 +162,7 @@ function NotificationRow({
 }
 
 export default function NotificationsScreen() {
+  const router = useRouter();
   const [notifs, setNotifs] = useState<NotificationItem[]>([]);
   const [isRefreshing, setRefreshing] = useState(false);
   const [isLoading, setLoading] = useState(true);
@@ -196,10 +198,44 @@ export default function NotificationsScreen() {
   };
 
   const markRead = async (id: string) => {
+    const item = notifs.find((n) => n.id === id);
+    if (!item) return;
+
     const token = await getItem<string>(StorageKeys.accessToken);
     if (!token) return;
-    setNotifs((prev) => prev.map((item) => (item.id === id ? { ...item, is_read: true } : item)));
+    setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
     await markNotificationRead(token, id);
+
+    // Navigate based on type
+    const type = asNotifType(item.type);
+    if (type === 'follow') {
+      const actorId = readString(item.data, 'actor_id');
+      if (actorId) {
+        router.push(`/(main)/other-profile/${actorId}`);
+      }
+    } else if (type === 'badge_unlocked') {
+      router.push('/(main)/profile?tab=achievements');
+    } else if (type === 'event_reward') {
+      const eventId = readString(item.data, 'event_id');
+      if (eventId) {
+        router.push(`/event-detail?eventId=${eventId}`);
+      }
+    } else if (type === 'like' || type === 'comment') {
+      const postId = readString(item.data, 'post_id');
+      if (postId) {
+        router.push(`/post-detail?postId=${postId}`);
+      }
+    } else if (type === 'quest_complete' || type === 'quest_rejected') {
+      const postId = readString(item.data, 'post_id');
+      if (postId) {
+        router.push(`/post-detail?postId=${postId}`);
+      } else {
+        const questId = readString(item.data, 'quest_id');
+        if (questId) {
+          router.push(`/quest-detail?questId=${questId}`);
+        }
+      }
+    }
   };
 
   const today = notifs;

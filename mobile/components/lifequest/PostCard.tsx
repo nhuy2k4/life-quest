@@ -289,8 +289,6 @@ export function PostCard({ post, attachedQuest = null, showEligibility = false }
       </View>
     );
   }
-
-  console.log('[PostCard Render]', post.id, 'eventRank:', post.eventRank, 'eventBadgeUrl:', post.eventBadgeUrl);
   return (
     <>
       <View style={styles.card}>
@@ -495,9 +493,6 @@ export function PostCard({ post, attachedQuest = null, showEligibility = false }
             </Pressable>
             <Pressable style={styles.menuItem} onPress={onCopyLink}>
               <Text style={styles.menuText}>Copy link</Text>
-            </Pressable>
-            <Pressable style={styles.menuItem} onPress={onReportPost}>
-              <Text style={styles.menuText}>Report</Text>
             </Pressable>
             {isOwner ? (
               <Pressable style={[styles.menuItem, styles.menuDanger]} onPress={onDeletePost}>

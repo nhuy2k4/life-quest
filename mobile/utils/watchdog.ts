@@ -22,8 +22,7 @@ export function logWatchdog(event: string, data?: Record<string, unknown>) {
 }
 
 function dumpRecentEvents() {
-  const payload = events.slice(-20);
-  console.log('[watchdog] recent events', payload);
+  // Silent watchdog events dump
 }
 
 export function startWatchdog(): () => void {

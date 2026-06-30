@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { type Href, useRouter, useFocusEffect } from 'expo-router';
-import { useState, useCallback, useMemo } from 'react';
+import { type Href, useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -22,6 +22,8 @@ type TabId = 'photos' | 'liked' | 'awards' | 'achievements';
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const tabParam = params.tab as TabId;
   const { currentUser, isLoadingCurrentUser, refreshCurrentUser } = useUserContext();
   const { posts } = usePostContext();
   const {
@@ -34,6 +36,15 @@ export default function ProfileScreen() {
   } = useBadgeContext();
 
   const [activeTab, setActiveTab] = useState<TabId>('photos');
+
+  useEffect(() => {
+    if (tabParam && ['photos', 'liked', 'awards', 'achievements'].includes(tabParam)) {
+      setActiveTab(tabParam);
+      if (tabParam === 'achievements') {
+        void refreshBadges();
+      }
+    }
+  }, [tabParam, refreshBadges]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [rarityFilter, setRarityFilter] = useState<RarityFilter>('all');
   const [selectedBadge, setSelectedBadge] = useState<BadgeItem | null>(null);

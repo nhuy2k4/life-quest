@@ -39,9 +39,6 @@ export type FeedResponse = {
 };
 
 export function mapFeedPost(post: FeedPost): Post {
-  if (post.event_rank != null || post.event_badge_url != null) {
-    console.log('[Feed] event post:', post.id, 'rank:', post.event_rank, 'badge:', post.event_badge_url);
-  }
   return {
     id: post.id,
     author: {

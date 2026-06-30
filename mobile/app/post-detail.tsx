@@ -438,9 +438,6 @@ export default function PostDetailScreen() {
             <Pressable style={styles.menuItem} onPress={onCopyLink}>
               <Text style={styles.menuText}>Copy link</Text>
             </Pressable>
-            <Pressable style={styles.menuItem} onPress={onReportPost}>
-              <Text style={styles.menuText}>Report</Text>
-            </Pressable>
             {isOwner ? (
               <>
                 <Pressable

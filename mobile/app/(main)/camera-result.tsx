@@ -26,7 +26,7 @@ import { useXpGain } from '@/contexts/XpGainContext';
 import { computeFileHash, submitQuest, startQuest, recommendQuestsFromImage, type QuestListItem } from '@/services/questService';
 import { suggestPoi } from '@/services/poiService';
 import { getAppLocation } from '@/services/locationService';
-import { createPost, deletePost } from '@/services/socialService';
+import { createPost, deletePost, mapFeedPost } from '@/services/socialService';
 import { uploadImage } from '@/services/uploadService';
 import type { Post, Quest } from '@/types';
 import { StorageKeys, getItem, removeItem, setItem } from '@/utils/storage';
@@ -410,29 +410,8 @@ export default function CameraResultScreen() {
 
       // STEP 3: Normalize and finalize client state
       const newPost: Post = {
-        id: serverPost.id,
-        author: {
-          id: serverPost.user.id,
-          username: serverPost.user.username,
-        },
-        submissionId: serverPost.submission_id ?? undefined,
-        imageUrl: serverPost.submission_image_url ?? imageUri,
-        caption: caption.trim() || '',
-        quest: serverPost.quest
-          ? {
-              id: serverPost.quest.id,
-              title: serverPost.quest.title,
-              description: serverPost.quest.description ?? undefined,
-              xp_reward: serverPost.quest.xp_reward,
-              poi_name: serverPost.quest.poi_name ?? null,
-            }
-          : undefined,
-        location: location.trim() || undefined,
-        createdAt: serverPost.created_at,
-        likesCount: 0,
-        commentsCount: 0,
-        isLiked: false,
-        isSaved: false,
+        ...mapFeedPost(serverPost),
+        imageUrl: serverPost.submission_image_url ?? imageUri, // Preserve local URI fallback if server url is slow to load
       };
 
       const matchingPost = posts.find((post) => {
