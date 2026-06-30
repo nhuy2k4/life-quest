@@ -10,6 +10,7 @@ import { CommentSheet } from '@/components/lifequest/CommentSheet';
 import { ImageWithFallback } from '@/components/lifequest/ImageWithFallback';
 import { Avatar } from '@/components/ui/avatar';
 import { ROUTES } from '@/constants/routes';
+import { buildApiUrl } from '@/constants/api';
 import { usePostContext } from '@/contexts/PostContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useUserContext } from '@/contexts/UserContext';
@@ -242,9 +243,7 @@ export function PostCard({ post, attachedQuest = null, showEligibility = false }
   };
 
   const onCopyLink = async () => {
-    const rawBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api/v1';
-    const baseUrl = rawBaseUrl.replace(/\/+$/, '');
-    const url = `${baseUrl}/social/posts/${post.id}/share`;
+    const url = buildApiUrl(`/social/posts/${post.id}/share`);
     await Clipboard.setStringAsync(url);
     showToast('Copied link.');
     setMenuOpen(false);

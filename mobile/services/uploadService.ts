@@ -1,10 +1,9 @@
+import { API_BASE_URL } from '@/constants/api';
+
 export type UploadResponse = {
   url: string;
   public_id: string;
 };
-
-const RAW_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api/v1';
-const BASE_URL = RAW_BASE_URL.replace(/\/+$/, '');
 
 async function readResponsePayload(response: Response): Promise<unknown> {
   const text = await response.text();
@@ -48,7 +47,7 @@ export async function uploadImage(token: string, uri: string, idempotencyKey?: s
   }
 
   const uploadRequest = async (): Promise<UploadResponse> => {
-    const response = await fetch(`${BASE_URL}/uploads/image`, {
+    const response = await fetch(`${API_BASE_URL}/uploads/image`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,

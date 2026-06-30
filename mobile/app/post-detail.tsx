@@ -15,6 +15,7 @@ import type { Post } from '@/types';
 import { getItem, StorageKeys } from '@/utils/storage';
 import { useToast } from '@/contexts/ToastContext';
 import { useUserContext } from '@/contexts/UserContext';
+import { buildApiUrl } from '@/constants/api';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from 'react-native';
 
@@ -68,9 +69,7 @@ export default function PostDetailScreen() {
 
   const onCopyLink = async () => {
     if (!post) return;
-    const rawBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api/v1';
-    const baseUrl = rawBaseUrl.replace(/\/+$/, '');
-    const url = `${baseUrl}/social/posts/${post.id}/share`;
+    const url = buildApiUrl(`/social/posts/${post.id}/share`);
     await Clipboard.setStringAsync(url);
     showToast('Copied link.');
     setMenuOpen(false);

@@ -1,3 +1,5 @@
+import { buildApiUrl } from '@/constants/api';
+
 export class HttpError extends Error {
   status: number;
   payload?: unknown;
@@ -16,18 +18,7 @@ type RequestOptions = RequestInit & {
   skipRefresh?: boolean;
 };
 
-const RAW_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api/v1';
-const BASE_URL = RAW_BASE_URL.replace(/\/+$/, '');
-
 let refreshInFlight: Promise<string | null> | null = null;
-
-function buildUrl(path: string): string {
-  if (/^https?:\/\//.test(path)) {
-    return path;
-  }
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return `${BASE_URL}${normalizedPath}`;
-}
 
 async function safeReadJson(response: Response): Promise<unknown> {
   const text = await response.text();
@@ -71,7 +62,7 @@ async function refreshAccessToken(): Promise<string | null> {
     }
 
     try {
-      const response = await fetch(buildUrl('/auth/refresh'), {
+      const response = await fetch(buildApiUrl('/auth/refresh'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -130,7 +121,7 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch(buildUrl(path), {
+      const response = await fetch(buildApiUrl(path), {
         ...rest,
         headers: {
           ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
@@ -157,7 +148,7 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
     return await executeRequest(token);
   } catch (error) {
     if (error instanceof HttpError && error.status === 401 && token && !skipRefresh) {
-      const isRefreshEndpoint = /\/auth\/refresh$/.test(buildUrl(path));
+      const isRefreshEndpoint = /\/auth\/refresh$/.test(buildApiUrl(path));
       if (!isRefreshEndpoint) {
         const refreshedToken = await refreshAccessToken();
         if (refreshedToken) {

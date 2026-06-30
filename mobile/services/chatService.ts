@@ -1,3 +1,4 @@
+import { buildApiWebSocketUrl } from '@/constants/api';
 import { requestJson } from '@/services/httpClient';
 
 export type ChatUser = {
@@ -85,7 +86,5 @@ export async function markConversationRead(token: string, conversationId: string
 }
 
 export function createChatSocket(token: string): WebSocket {
-  const rawBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api/v1';
-  const wsBaseUrl = rawBaseUrl.replace(/^http/, 'ws').replace(/\/+$/, '');
-  return new WebSocket(`${wsBaseUrl}/chat/ws?token=${encodeURIComponent(token)}`);
+  return new WebSocket(buildApiWebSocketUrl(`/chat/ws?token=${encodeURIComponent(token)}`));
 }
