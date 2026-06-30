@@ -5,11 +5,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { BottomNav } from '@/components/lifequest/BottomNav';
 import { ImageWithFallback } from '@/components/lifequest/ImageWithFallback';
 import { LQButton } from '@/components/lifequest/LQButton';
 import { XPBadge } from '@/components/lifequest/XPBadge';
-import { Layout } from '@/constants/layout';
 import { ROUTES } from '@/constants/routes';
 import { logRecommendationEvent, type RecommendationSectionKey, type RecommendationScoreBreakdown } from '@/services/recommendationService';
 import { startQuest, getQuestDetail } from '@/services/questService';
@@ -336,7 +334,6 @@ const [totalXpWithPoi, setTotalXpWithPoi] = useState(0);
         </View>
       </ScrollView>
 
-      <BottomNav />
       {isLoading ? (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="small" color="#11181C" />
@@ -377,7 +374,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: Layout.bottomNavHeight + 36,
+    paddingBottom: 36,
     gap: 18,
   },
   infoWrap: {

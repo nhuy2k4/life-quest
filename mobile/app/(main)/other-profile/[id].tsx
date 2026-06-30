@@ -258,18 +258,22 @@ export default function OtherProfileScreen() {
     );
   }
 
+  const isViewingSelf = Boolean(profile.isSelf || currentUser?.id === profile.id);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.content, !isViewingSelf ? styles.contentWithoutBottomNav : null]}>
         <ProfileHeader
           user={profile}
-          isSelf={Boolean(profile.isSelf)}
+          isSelf={isViewingSelf}
           isFollowing={isFollowing}
           onBack={() => router.back()}
           onToggleFollow={handleToggleFollow}
         />
 
-        {!profile.isSelf ? (
+        {!isViewingSelf ? (
           <View style={styles.messageActionWrap}>
             <Pressable
               style={styles.messageButton}
@@ -422,7 +426,7 @@ export default function OtherProfileScreen() {
         )}
       </ScrollView>
 
-      <BottomNav />
+      {isViewingSelf ? <BottomNav /> : null}
       <BadgeDetailModal
         badge={selectedBadge}
         onClose={() => setSelectedBadge(null)}
@@ -444,6 +448,9 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: Layout.bottomNavHeight + 20,
+  },
+  contentWithoutBottomNav: {
+    paddingBottom: 28,
   },
   innerWrap: {
     gap: 12,
