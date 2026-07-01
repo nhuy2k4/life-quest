@@ -134,10 +134,19 @@ const [totalXpWithPoi, setTotalXpWithPoi] = useState(0);
       const token = await getItem<string>(StorageKeys.accessToken);
       if (!token) return;
 
+      const attachedQuest = await getItem<{
+        questId?: string;
+        poi_id?: string | null;
+        poi_name?: string | null;
+      }>(StorageKeys.attachedQuest);
+
+      const fallbackPoiId = attachedQuest?.questId === questId ? attachedQuest.poi_id ?? null : null;
+      const queryPoiId = poiId ?? fallbackPoiId;
+
       setIsLoading(true);
       try {
-        const detail = await getQuestDetail(token, questId, poiId);
-        const nextPoiId = detail.poi_id ?? poiId ?? null;
+        const detail = await getQuestDetail(token, questId, queryPoiId);
+        const nextPoiId = detail.poi_id ?? queryPoiId ?? null;
         const nextPoiName = detail.poi_name ?? routePoiName ?? null;
         const hasLocationContext = Boolean(nextPoiId || nextPoiName || detail.poi_required);
 
