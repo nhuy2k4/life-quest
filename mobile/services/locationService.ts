@@ -16,6 +16,7 @@ type LocationOptions = {
 };
 
 const DEFAULT_MAX_AGE_MS = 2 * 60 * 1000;
+let inMemoryLocation: AppLocation | null = null;
 
 function isUsable(location: AppLocation | null, maxAgeMs: number): location is AppLocation {
   if (!location) return false;
@@ -23,8 +24,23 @@ function isUsable(location: AppLocation | null, maxAgeMs: number): location is A
 }
 
 async function readCachedLocation(maxAgeMs: number): Promise<AppLocation | null> {
+  if (isUsable(inMemoryLocation, maxAgeMs)) {
+    return inMemoryLocation;
+  }
+
   const cached = await getItem<AppLocation>(StorageKeys.lastLocation);
-  return isUsable(cached, maxAgeMs) ? cached : null;
+  if (isUsable(cached, maxAgeMs)) {
+    inMemoryLocation = cached;
+    return cached;
+  }
+
+  return null;
+}
+
+async function writeCachedLocation(location: AppLocation): Promise<AppLocation> {
+  inMemoryLocation = location;
+  await setItem(StorageKeys.lastLocation, location);
+  return location;
 }
 
 async function requestCurrentLocation(accuracy: Location.LocationAccuracy): Promise<AppLocation | null> {
@@ -40,15 +56,15 @@ async function requestCurrentLocation(accuracy: Location.LocationAccuracy): Prom
     accuracy: current.coords.accuracy ?? null,
     capturedAt: Date.now(),
   };
-  await setItem(StorageKeys.lastLocation, next);
-  return next;
+  return writeCachedLocation(next);
 }
 
 export async function getAppLocation(options: LocationOptions = {}): Promise<AppLocation | null> {
   const maxAgeMs = options.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
-  if (!options.forceRefresh) {
-    const cached = await readCachedLocation(maxAgeMs);
-    if (cached) return cached;
+
+  const cached = await readCachedLocation(maxAgeMs);
+  if (cached) {
+    return cached;
   }
 
   try {

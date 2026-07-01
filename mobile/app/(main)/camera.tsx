@@ -19,13 +19,13 @@ export default function CameraScreen() {
     const resetQuestContext = async () => {
       const mode = await getItem<string>(StorageKeys.cameraMode);
       if (mode === 'quest') {
+        void warmLocationCache();
         return;
       }
       await setItem(StorageKeys.cameraMode, 'free');
       await removeItem(StorageKeys.attachedQuest);
     };
     void resetQuestContext();
-    void warmLocationCache();
   }, []);
 
   const handleCapture = async () => {
@@ -35,7 +35,7 @@ export default function CameraScreen() {
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.65,
+        quality: 0.5,
         skipProcessing: false,
       });
       if (photo?.uri) {

@@ -14,6 +14,8 @@ import {
   Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { CommonActions, useNavigation } from '@react-navigation/native';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
@@ -48,6 +50,7 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
 
 export default function CameraResultScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const params = useLocalSearchParams();
   const { posts, setPosts } = usePostContext();
   const { showToast } = useToast();
@@ -93,9 +96,13 @@ export default function CameraResultScreen() {
       // 1. Phải có ảnh trên Cloudinary thì AI Backend mới phân tích được. Upload nếu chưa cache.
       let activeUpload = uploadedCache;
       if (!activeUpload) {
+        const uploadStartAt = Date.now();
         const result = await uploadImage(token, imageUri, computeFileHash(imageUri));
         activeUpload = { url: result.url, publicId: result.public_id };
         setUploadedCache(activeUpload); // Cache lại để lát ấn Post ko cần upload lại
+        if (__DEV__) {
+          console.info('[camera-result] picker_upload_ms=', Date.now() - uploadStartAt);
+        }
       }
 
       let lat: number | undefined;
@@ -117,6 +124,15 @@ export default function CameraResultScreen() {
     } finally {
       setLoadingQuests(false);
     }
+  };
+
+  const resetToHome = () => {
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'home' }],
+      })
+    );
   };
 
   const handleSelectQuest = (quest: QuestListItem) => {
@@ -180,6 +196,7 @@ export default function CameraResultScreen() {
           setEventLongitude(raw.eventLongitude ?? null);
           setEventRadiusM(raw.eventRadiusM ?? null);
         }
+
       } catch (err) {
         console.log('Error hydrating attached quest', err);
       }
@@ -189,7 +206,11 @@ export default function CameraResultScreen() {
 
       setIsLocating(true);
       try {
+        const permissionStartAt = Date.now();
         const { status } = await Location.requestForegroundPermissionsAsync();
+        if (__DEV__) {
+          console.info('[camera-result] permission_ms=', Date.now() - permissionStartAt);
+        }
         if (status !== 'granted') {
           showToast('Không có quyền truy cập vị trí.');
           setIsLocating(false);
@@ -197,11 +218,15 @@ export default function CameraResultScreen() {
           return;
         }
 
+        const locationStartAt = Date.now();
         const currentLocation = await getAppLocation({
           forceRefresh: true,
           maxAgeMs: 30 * 1000,
           accuracy: Location.Accuracy.High,
         });
+        if (__DEV__) {
+          console.info('[camera-result] init_location_ms=', Date.now() - locationStartAt);
+        }
         if (!currentLocation) {
           setIsCheckingLocation(false);
           setIsLocating(false);
@@ -249,7 +274,11 @@ export default function CameraResultScreen() {
             }
           }
         } else {
+          const poiSuggestStartAt = Date.now();
           const suggestion = await suggestPoi(latitude, longitude, accuracy);
+          if (__DEV__) {
+            console.info('[camera-result] suggest_poi_ms=', Date.now() - poiSuggestStartAt);
+          }
           
           if (suggestion.poi_id && suggestion.name) {
             if (isQuest && activeQuestPoiId) {
@@ -265,11 +294,6 @@ export default function CameraResultScreen() {
       } catch (err) {
         console.log('POI suggestion failure', err);
       } finally {
-        const elapsed = Date.now() - startTime;
-        const remaining = 5000 - elapsed;
-        if (remaining > 0) {
-          await new Promise((resolve) => setTimeout(resolve, remaining));
-        }
         setIsCheckingLocation(false);
         setIsLocating(false);
       }
@@ -291,9 +315,28 @@ export default function CameraResultScreen() {
       return;
     }
 
+    const handlePostStartAt = Date.now();
     setPosting(true);
 
     try {
+      if (__DEV__) {
+        console.info('[camera-result] handle_post_start', {
+          quest: !!attachedQuestId,
+          imageUri,
+        });
+      }
+
+      try {
+        const imageInfo = await FileSystem.getInfoAsync(imageUri);
+        if (__DEV__) {
+          console.info('[camera-result] image_size_bytes=', imageInfo.exists ? imageInfo.size ?? null : null);
+        }
+      } catch (sizeError) {
+        if (__DEV__) {
+          console.info('[camera-result] image_size_error=', sizeError);
+        }
+      }
+
       const cameraMode = await getItem<string>(StorageKeys.cameraMode);
 
       // STEP 1: Universal image upload (reuses cache if preset)
@@ -321,7 +364,11 @@ export default function CameraResultScreen() {
         // Ensure the quest is started before submitting (covers "Try a Quest" picker flow
         // where startQuest was never called, unlike the quest-detail → camera flow).
         try {
+          const startQuestStartAt = Date.now();
           const startResult = await startQuest(token, attachedQuestId, poiId);
+          if (__DEV__) {
+            console.info('[camera-result] start_quest_ms=', Date.now() - startQuestStartAt);
+          }
           // If the quest is REJECTED (retry mode), startQuest now returns status=rejected.
           // This is fine — submitQuest will handle the retry path on the backend.
           if (startResult.status === 'submitted' || startResult.status === 'approved') {
@@ -345,12 +392,17 @@ export default function CameraResultScreen() {
 
         const coordsAreOld = !coords?.capturedAt || Date.now() - coords.capturedAt > 30 * 1000;
         if (!submissionLat || !submissionLng || coordsAreOld) {
+          const refreshLocationStartAt = Date.now();
           const latestLocation = await getAppLocation({ forceRefresh: true, maxAgeMs: 30 * 1000 });
+          if (__DEV__) {
+            console.info('[camera-result] refresh_location_ms=', Date.now() - refreshLocationStartAt);
+          }
           submissionLat = latestLocation?.latitude ?? submissionLat;
           submissionLng = latestLocation?.longitude ?? submissionLng;
         }
 
         try {
+          const createPostStartAt = Date.now();
           serverPost = await createPost(token, {
             imageUrl: upload.url,
             questId: attachedQuestId,
@@ -360,6 +412,9 @@ export default function CameraResultScreen() {
             visibility,
             isEvent: isEventQuest,
           });
+          if (__DEV__) {
+            console.info('[camera-result] create_post_ms=', Date.now() - createPostStartAt);
+          }
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Lỗi không xác định';
           throw new Error(msg);
@@ -367,6 +422,7 @@ export default function CameraResultScreen() {
 
         let submission: Awaited<ReturnType<typeof submitQuest>>;
         try {
+          const submitQuestStartAt = Date.now();
           submission = await submitQuest(token, attachedQuestId, {
             postId: serverPost.id,
             imageUrl: upload.url,
@@ -379,6 +435,9 @@ export default function CameraResultScreen() {
           });
           if (submission.status === 'approved' || submission.submission_status === 'approved') {
             earnedXp = submission.xp_granted ?? submission.xp_reward ?? attachedQuest?.xpReward ?? 0;
+          }
+          if (__DEV__) {
+            console.info('[camera-result] submit_quest_ms=', Date.now() - submitQuestStartAt);
           }
         } catch (err) {
           await deletePost(token, serverPost.id).catch(() => undefined);
@@ -394,6 +453,7 @@ export default function CameraResultScreen() {
       } else {
         // ── FREE POST FLOW (Optionally attaches a reference quest tag without evaluating for formal completion) ──
         try {
+          const createPostStartAt = Date.now();
           serverPost = await createPost(token, {
             imageUrl: upload.url,
             questId: attachedQuestId || undefined, // Handled smoothly by decoupled backend link
@@ -402,6 +462,9 @@ export default function CameraResultScreen() {
             poiId,
             visibility,
           });
+          if (__DEV__) {
+            console.info('[camera-result] create_post_ms=', Date.now() - createPostStartAt);
+          }
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Lỗi không xác định';
           throw new Error(msg);
@@ -458,11 +521,14 @@ export default function CameraResultScreen() {
       showXpGain(earnedXp);
       showToast('Đăng bài thành công! 🎉');
 
-      router.replace(ROUTES.main.home);
+      resetToHome();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Đã xảy ra lỗi.';
       showToast(message);
     } finally {
+      if (__DEV__) {
+        console.info('[camera-result] handle_post_total_ms=', Date.now() - handlePostStartAt);
+      }
       setPosting(false);
     }
   };
